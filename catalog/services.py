@@ -383,6 +383,30 @@ class SlotUnavailableError(Exception):
     """
 
 
+def get_booking_end_time(
+    start_time: time,
+    duration_minutes: int,
+) -> time:
+    """
+    Возвращает время окончания услуги.
+
+    Запись не может пересекать полночь, потому что Booking хранит
+    дату и start_time как значения одного календарного дня.
+    """
+
+    end_datetime = (
+        datetime.combine(date.min, start_time)
+        + timedelta(minutes=duration_minutes)
+    )
+
+    if end_datetime.date() != date.min:
+        raise SlotUnavailableError(
+            "Услуга не может пересекать полночь.",
+        )
+
+    return end_datetime.time()
+
+
 def create_booking(
     master: Master,
     service: Service,
@@ -395,30 +419,38 @@ def create_booking(
     slot_step_minutes: int = 15,
 ):
     """
-    Создаёт запись клиента, заново проверяя доступность слота
+    Создаёт запись клиента с повторной проверкой доступности
     внутри транзакции с блокировкой мастера.
 
-    Между тем, как клиент увидел свободное время на экране,
-    и тем, как он нажал "подтвердить", это время мог занять кто-то
-    другой. Чтобы два клиента не забронировали один и тот же слот
-    одновременно, мы блокируем строку мастера (select_for_update)
-    на время проверки и создания записи: пока одна транзакция не
-    завершится, вторая будет ждать на этой строке и, дождавшись,
-    увидит уже актуальную занятость мастера.
+    ONLINE:
+        - только время из рабочего расписания;
+        - только доступные кандидаты;
+        - учитываются TimeBlock и активные Booking.
 
-    Блокировать саму таблицу Booking недостаточно: если на слот
-    ещё нет ни одной записи, SELECT ... FOR UPDATE по Booking
-    просто не найдёт, что блокировать, и не помешает второй,
-    параллельной вставке.
+    PHONE / ADMIN:
+        - могут быть созданы вне рабочего расписания;
+        - но не могут пересекаться с TimeBlock;
+        - не могут пересекаться с активными Booking;
+        - явно закрытый через ScheduleException день остаётся закрытым.
 
-    Бросает SlotUnavailableError, если слот недоступен по любой
-    причине. Ничего не создаёт в этом случае.
+    При создании Booking цена и длительность берутся из
+    MasterService и сохраняются как исторический snapshot.
     """
+
+    if source not in Booking.Source.values:
+        raise ValueError(
+            f"Недопустимый источник записи: {source}",
+        )
 
     with transaction.atomic():
         locked_master = Master.objects.select_for_update().get(
             pk=master.pk,
         )
+
+        if not locked_master.is_active:
+            raise SlotUnavailableError(
+                "Мастер больше не принимает клиентов.",
+            )
 
         try:
             master_service = locked_master.master_services.get(
@@ -430,17 +462,87 @@ def create_booking(
                 "Мастер не оказывает данную услугу.",
             )
 
-        available_slots = get_available_slots(
-            locked_master,
-            service,
-            target_date,
-            slot_step_minutes,
+        # Явно закрытый день нельзя обойти даже административной
+        # записью. ScheduleException имеет приоритет над обычным
+        # WorkingHours.
+        schedule_exception = (
+            locked_master.schedule_exceptions
+            .filter(date=target_date)
+            .first()
         )
 
-        if start_time not in available_slots:
+        if schedule_exception is not None and schedule_exception.is_closed:
             raise SlotUnavailableError(
-                "Выбранное время больше недоступно.",
+                "На выбранную дату мастер не работает.",
             )
+
+        # Проверяем, что услуга физически помещается в пределах
+        # одного календарного дня.
+        booking_end_time = get_booking_end_time(
+            start_time,
+            master_service.duration,
+        )
+
+        if source == Booking.Source.ONLINE:
+            # Онлайн-запись обязана пройти через стандартную
+            # систему доступных слотов.
+            available_slots = get_available_slots(
+                locked_master,
+                service,
+                target_date,
+                slot_step_minutes,
+            )
+
+            if start_time not in available_slots:
+                raise SlotUnavailableError(
+                    "Выбранное время больше недоступно.",
+                )
+
+        else:
+            # PHONE / ADMIN могут работать вне обычного расписания,
+            # поэтому get_available_slots() здесь использовать нельзя.
+
+            time_blocks = locked_master.time_blocks.filter(
+                date=target_date,
+            )
+
+            has_block_overlap = any(
+                intervals_overlap(
+                    start_time,
+                    booking_end_time,
+                    block.start_time,
+                    block.end_time,
+                )
+                for block in time_blocks
+            )
+
+            if has_block_overlap:
+                raise SlotUnavailableError(
+                    "Выбранное время заблокировано.",
+                )
+
+            active_bookings = get_active_bookings(
+                locked_master,
+                target_date,
+            )
+
+            has_booking_overlap = any(
+                intervals_overlap(
+                    start_time,
+                    booking_end_time,
+                    booking.start_time,
+                    get_booking_end_time(
+                        booking.start_time,
+                        booking.duration,
+                    ),
+                )
+                for booking in active_bookings
+            )
+
+            if has_booking_overlap:
+                raise SlotUnavailableError(
+                    "Выбранное время уже занято.",
+                )
 
         booking = Booking.objects.create(
             master=locked_master,
