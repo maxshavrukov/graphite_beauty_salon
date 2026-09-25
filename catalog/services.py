@@ -1,5 +1,7 @@
 from datetime import date, datetime, time, timedelta
 
+from django.db import transaction
+
 from .models import Booking, Master, MasterService, Service
 
 def get_working_intervals(
@@ -8,13 +10,15 @@ def get_working_intervals(
 ):
     """
     Возвращает рабочие интервалы мастера на конкретную дату.
+
     Например:
     [
         (09:00, 13:00),
         (14:00, 18:00),
     ]
 
-    Если мастер в этот день не работает или день закрыт,возвращает пустой список.
+    Если мастер в этот день не работает или день закрыт,
+    возвращает пустой список.
     """
 
     exception = master.schedule_exceptions.filter(
@@ -368,3 +372,88 @@ def get_available_masters_for_slot(
             })
 
     return available
+
+
+class SlotUnavailableError(Exception):
+    """
+    Выбрасывается, когда время, которое пытается забронировать
+    клиент, оказалось недоступно к моменту фактического создания
+    записи — например, его успел занять кто-то другой, мастер
+    больше не оказывает эту услугу, или день закрылся исключением.
+    """
+
+
+def create_booking(
+    master: Master,
+    service: Service,
+    target_date: date,
+    start_time: time,
+    client_name: str,
+    client_phone: str,
+    source: str = Booking.Source.ONLINE,
+    comment: str = "",
+    slot_step_minutes: int = 15,
+):
+    """
+    Создаёт запись клиента, заново проверяя доступность слота
+    внутри транзакции с блокировкой мастера.
+
+    Между тем, как клиент увидел свободное время на экране,
+    и тем, как он нажал "подтвердить", это время мог занять кто-то
+    другой. Чтобы два клиента не забронировали один и тот же слот
+    одновременно, мы блокируем строку мастера (select_for_update)
+    на время проверки и создания записи: пока одна транзакция не
+    завершится, вторая будет ждать на этой строке и, дождавшись,
+    увидит уже актуальную занятость мастера.
+
+    Блокировать саму таблицу Booking недостаточно: если на слот
+    ещё нет ни одной записи, SELECT ... FOR UPDATE по Booking
+    просто не найдёт, что блокировать, и не помешает второй,
+    параллельной вставке.
+
+    Бросает SlotUnavailableError, если слот недоступен по любой
+    причине. Ничего не создаёт в этом случае.
+    """
+
+    with transaction.atomic():
+        locked_master = Master.objects.select_for_update().get(
+            pk=master.pk,
+        )
+
+        try:
+            master_service = locked_master.master_services.get(
+                service=service,
+                is_active=True,
+            )
+        except MasterService.DoesNotExist:
+            raise SlotUnavailableError(
+                "Мастер не оказывает данную услугу.",
+            )
+
+        available_slots = get_available_slots(
+            locked_master,
+            service,
+            target_date,
+            slot_step_minutes,
+        )
+
+        if start_time not in available_slots:
+            raise SlotUnavailableError(
+                "Выбранное время больше недоступно.",
+            )
+
+        booking = Booking.objects.create(
+            master=locked_master,
+            service=service,
+            date=target_date,
+            start_time=start_time,
+            client_name=client_name,
+            client_phone=client_phone,
+            price=master_service.price,
+            duration=master_service.duration,
+            status=Booking.Status.NEW,
+            source=source,
+            comment=comment,
+        )
+
+    return booking

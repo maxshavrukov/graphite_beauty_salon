@@ -4,6 +4,10 @@ __pycache__/
 .env
 .idea/
 .vscode/
+.pytest_cache/
 node_modules/
 dist/
 *.log
+media/
+db.sqlite3
+test_db.sqlite3

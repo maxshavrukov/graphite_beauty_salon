@@ -1,5 +1,10 @@
+from typing import TYPE_CHECKING
+
 from django.core.exceptions import ValidationError
 from django.db import models
+
+if TYPE_CHECKING:
+    from django_stubs_ext.db.models.manager import RelatedManager
 
 # Create your models here.
 
@@ -8,6 +13,9 @@ class ServiceCategory(models.Model):
     slug = models.SlugField(max_length=120, unique=True)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+
+    if TYPE_CHECKING:
+        services: "RelatedManager[Service]"
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -29,6 +37,10 @@ class Service(models.Model):
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
+    if TYPE_CHECKING:
+        master_services: "RelatedManager[MasterService]"
+        bookings: "RelatedManager[Booking]"
+
     class Meta:
         ordering = ["sort_order", "name"]
         verbose_name = "Услуга"
@@ -44,6 +56,13 @@ class Master(models.Model):
     bio = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+
+    if TYPE_CHECKING:
+        master_services: "RelatedManager[MasterService]"
+        working_hours: "RelatedManager[WorkingHours]"
+        schedule_exceptions: "RelatedManager[ScheduleException]"
+        time_blocks: "RelatedManager[TimeBlock]"
+        bookings: "RelatedManager[Booking]"
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -106,6 +125,13 @@ class WorkingHours(models.Model):
     )
     start_time = models.TimeField()
     end_time = models.TimeField()
+
+    if TYPE_CHECKING:
+        # Django создаёт этот метод динамически из-за choices=
+        # у поля weekday. mypy-плагин django-stubs видит это
+        # автоматически, а Pylance/Pyright — нет, поэтому здесь
+        # даём ему подсказку вручную.
+        def get_weekday_display(self) -> str: ...
 
     class Meta:
         ordering = ["weekday", "start_time"]
