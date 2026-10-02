@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from django.urls import reverse_lazy
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,28 +24,37 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-1!&x9$bqt9_9!0e&j#-=%8u*st1%jiqtk06=d#_n8cax)mezsw'
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG") == "True"
 
-ALLOWED_HOSTS = []
+# "localhost,127.0.0.1" превращаем в список ["localhost", "127.0.0.1"]
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'unfold',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'corsheaders',
     'catalog',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -130,6 +140,24 @@ STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# CORS (django-cors-headers)
+# Пока фронтенда нет — пустой список, ничего не сломает.
+# Когда появится React-дев-сервер, добавим сюда его адрес,
+# например 'http://localhost:5173'.
+CORS_ALLOWED_ORIGINS = []
+
+# Насколько дней вперёд клиент может увидеть в календаре свободные
+# даты и записаться. Обрезаем именно на бэкенде, а не только
+# на фронте — иначе кто угодно сможет обойти лимит прямым запросом
+# к API с произвольной датой.
+BOOKING_MAX_DAYS_AHEAD = 30
+
+# За сколько минут до начала услуги закрывается онлайн-запись.
+# Мастеру нужно время подготовиться — записаться "через 2 минуты"
+# нельзя. На PHONE/ADMIN не распространяется: администратор может
+# задним числом занести уже случившийся визит walk-in клиента.
+BOOKING_MIN_LEAD_MINUTES = 60
+
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
@@ -137,5 +165,79 @@ MEDIA_ROOT = BASE_DIR / 'media'
 MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+    },
+}
+
+# Django REST framework
+REST_FRAMEWORK = {
+    # Лимит на все публичные GET-запросы по умолчанию:
+    # защищает "тяжёлые" расчёты свободного времени от перегрузки.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/min",
+        # Создание записи: настоящему клиенту хватит с запасом,
+        # а бот упрётся в лимит почти сразу.
+        "booking_create": "10/hour",
+    },
+}
+
+# Unfold: оформление админки
+UNFOLD = {
+    "SITE_TITLE": "Graphite",
+    "SITE_HEADER": "Graphite Beauty Salon",
+    "SIDEBAR": {
+        "show_search": False,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": "Работа салона",
+                "items": [
+                    {
+                        "title": "Записи",
+                        "icon": "event",
+                        "link": reverse_lazy("admin:catalog_booking_changelist"),
+                    },
+                    {
+                        "title": "Мастера и графики",
+                        "icon": "content_cut",
+                        "link": reverse_lazy("admin:catalog_master_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Каталог услуг",
+                "items": [
+                    {
+                        "title": "Категории",
+                        "icon": "category",
+                        "link": reverse_lazy(
+                            "admin:catalog_servicecategory_changelist"
+                        ),
+                    },
+                    {
+                        "title": "Услуги",
+                        "icon": "spa",
+                        "link": reverse_lazy("admin:catalog_service_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Доступ",
+                "items": [
+                    {
+                        "title": "Пользователи",
+                        "icon": "person",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                    {
+                        "title": "Группы",
+                        "icon": "group",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                ],
+            },
+        ],
     },
 }

@@ -108,4 +108,23 @@ class FilterCandidatesByBookingsTests(TestCase):
         result = get_active_bookings(master, date(2026, 9, 7))
 
         self.assertEqual(result.count(), 1)
-        self.assertEqual(result[0].client_name, "Нужная запись")
+
+        found = result.first()
+        assert found is not None  # выше уже проверили, что count() == 1
+        self.assertEqual(found.client_name, "Нужная запись")
+
+    def test_no_show_booking_does_not_block_time(self):
+        master = make_master()
+        target_date = date(2026, 9, 7)
+
+        make_booking(
+            master=master,
+            target_date=target_date,
+            start_time=time(10, 0),
+            status=Booking.Status.NO_SHOW,
+        )
+
+        self.assertEqual(
+            list(get_active_bookings(master, target_date)),
+            [],
+        )

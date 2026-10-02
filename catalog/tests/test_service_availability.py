@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from catalog.models import WorkingHours
 from catalog.services import (
+    get_available_dates_for_master,
     get_available_dates_for_service,
     get_available_masters_for_slot,
     get_available_times_for_service,
@@ -132,6 +133,71 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
     def test_returns_empty_when_no_master_offers_service(self):
         result = get_available_dates_for_service(
             self.service, date_from=self.monday, date_to=self.tuesday,
+        )
+
+        self.assertEqual(result, [])
+
+
+class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
+    def test_includes_date_when_master_is_free(self):
+        master = make_master()
+        make_master_service(master, self.service, duration=30)
+        WorkingHours.objects.create(
+            master=master,
+            weekday=WorkingHours.Weekday.MONDAY,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
+        )
+
+        result = get_available_dates_for_master(
+            master, self.service, date_from=self.monday, date_to=self.tuesday,
+        )
+
+        self.assertEqual(result, [self.monday])
+
+    def test_excludes_date_when_master_is_fully_booked(self):
+        master = make_master()
+        make_master_service(master, self.service, duration=30)
+        WorkingHours.objects.create(
+            master=master,
+            weekday=WorkingHours.Weekday.MONDAY,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
+        )
+        make_booking(
+            master=master,
+            service=self.service,
+            target_date=self.monday,
+            start_time=time(9, 0),
+            duration=30,
+        )
+
+        result = get_available_dates_for_master(
+            master, self.service, date_from=self.monday, date_to=self.monday,
+        )
+
+        self.assertEqual(result, [])
+
+    def test_ignores_other_masters_availability(self):
+        # В отличие от get_available_dates_for_service, здесь дата
+        # не должна попасть в список, даже если СВОБОДЕН другой
+        # мастер — нас интересует конкретно переданный master.
+        target_master = make_master()
+        other_master = make_master()
+
+        make_master_service(target_master, self.service, duration=30)
+        make_master_service(other_master, self.service, duration=30)
+
+        WorkingHours.objects.create(
+            master=other_master,
+            weekday=WorkingHours.Weekday.MONDAY,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
+        )
+        # У target_master в этот день вообще нет рабочих часов.
+
+        result = get_available_dates_for_master(
+            target_master, self.service, date_from=self.monday, date_to=self.monday,
         )
 
         self.assertEqual(result, [])

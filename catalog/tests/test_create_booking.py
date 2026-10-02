@@ -1,9 +1,10 @@
 import threading
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from django.db import connection
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
+from django.utils import timezone
 
 from catalog.models import Booking, ScheduleException, TimeBlock, WorkingHours
 from catalog.services import SlotUnavailableError, create_booking, get_booking_end_time
@@ -213,6 +214,69 @@ class CreateBookingTests(TestCase):
         # Ровно одна запись — попытка второго клиента не прошла.
         self.assertEqual(Booking.objects.count(), 1)
         self.assertEqual(Booking.objects.get().client_name, "Первый клиент")
+
+    def test_online_rejects_time_already_passed_today(self):
+        # Реальные часы, без инъекции "now" — проверяем то самое
+        # поведение create_booking(), которое увидит настоящий клиент.
+        make_master_service(self.master, self.service, duration=30)
+
+        today = timezone.localdate()
+        now = timezone.localtime()
+
+        WorkingHours.objects.create(
+            master=self.master,
+            weekday=today.weekday(),
+            start_time=time(0, 0),
+            end_time=time(23, 59),
+        )
+
+        # time(0, 0) как безопасный запасной вариант: если сейчас
+        # первые минуты суток, "now - 5 минут" перескочит на вчера
+        # и перестанет быть "прошлым" для сегодняшней даты.
+        past_time = (
+            time(0, 0)
+            if now.time() <= time(0, 5)
+            else (now - timedelta(minutes=5)).time()
+        )
+
+        with self.assertRaises(SlotUnavailableError):
+            create_booking(
+                master=self.master,
+                service=self.service,
+                target_date=today,
+                start_time=past_time,
+                client_name="Иван",
+                client_phone="+380000000000",
+                source=Booking.Source.ONLINE,
+            )
+
+    def test_online_rejects_time_less_than_lead_time_ahead(self):
+        # Ещё не наступило, но и часа до начала не осталось —
+        # тоже должно отклоняться (не просто "уже прошло").
+        make_master_service(self.master, self.service, duration=30)
+
+        today = timezone.localdate()
+        now = timezone.localtime()
+
+        WorkingHours.objects.create(
+            master=self.master,
+            weekday=today.weekday(),
+            start_time=time(0, 0),
+            end_time=time(23, 59),
+        )
+
+        soon_time = (now + timedelta(minutes=30)).time()
+
+        with self.assertRaises(SlotUnavailableError):
+            create_booking(
+                master=self.master,
+                service=self.service,
+                target_date=today,
+                start_time=soon_time,
+                client_name="Иван",
+                client_phone="+380000000000",
+                source=Booking.Source.ONLINE,
+            )
 
 
 class CreateBookingPhoneAndAdminTests(TestCase):

@@ -1,10 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.core.exceptions import ValidationError
 from django.db import models
-
-if TYPE_CHECKING:
-    from django_stubs_ext.db.models.manager import RelatedManager
 
 # Create your models here.
 
@@ -15,7 +12,7 @@ class ServiceCategory(models.Model):
     sort_order = models.PositiveIntegerField(default=0)
 
     if TYPE_CHECKING:
-        services: "RelatedManager[Service]"
+        services: Any
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -38,8 +35,8 @@ class Service(models.Model):
     sort_order = models.PositiveIntegerField(default=0)
 
     if TYPE_CHECKING:
-        master_services: "RelatedManager[MasterService]"
-        bookings: "RelatedManager[Booking]"
+        master_services: Any
+        bookings: Any
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -58,11 +55,11 @@ class Master(models.Model):
     sort_order = models.PositiveIntegerField(default=0)
 
     if TYPE_CHECKING:
-        master_services: "RelatedManager[MasterService]"
-        working_hours: "RelatedManager[WorkingHours]"
-        schedule_exceptions: "RelatedManager[ScheduleException]"
-        time_blocks: "RelatedManager[TimeBlock]"
-        bookings: "RelatedManager[Booking]"
+        master_services: Any
+        working_hours: Any
+        schedule_exceptions: Any
+        time_blocks: Any
+        bookings: Any
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -132,11 +129,42 @@ class WorkingHours(models.Model):
         # автоматически, а Pylance/Pyright — нет, поэтому здесь
         # даём ему подсказку вручную.
         def get_weekday_display(self) -> str: ...
+        master_id: int | None
 
     class Meta:
         ordering = ["weekday", "start_time"]
         verbose_name = "Рабочее время"
         verbose_name_plural = "Рабочее время"
+
+    def clean(self):
+        if self.start_time is None or self.end_time is None:
+            return
+
+        if self.start_time >= self.end_time:
+            raise ValidationError(
+                "Время окончания должно быть позже времени начала."
+            )
+
+        if self.master_id is None:
+            return
+
+        siblings = WorkingHours.objects.filter(
+            master=self.master,
+            weekday=self.weekday,
+        ).exclude(pk=self.pk)
+
+        for other in siblings:
+            overlaps = (
+                self.start_time < other.end_time
+                and self.end_time > other.start_time
+            )
+
+            if overlaps:
+                raise ValidationError(
+                    "Пересекается с уже существующим рабочим "
+                    f"интервалом этого мастера в этот день недели: "
+                    f"{other.start_time:%H:%M}–{other.end_time:%H:%M}."
+                )
 
     def __str__(self):
         return (
@@ -245,6 +273,7 @@ class Booking(models.Model):
         CONFIRMED = "CONFIRMED", "Подтверждена"
         CANCELLED = "CANCELLED", "Отменена"
         COMPLETED = "COMPLETED", "Завершена"
+        NO_SHOW = "NO_SHOW", "Не пришёл"
 
     class Source(models.TextChoices):
         ONLINE = "ONLINE", "Онлайн"
@@ -287,6 +316,9 @@ class Booking(models.Model):
     )
 
     comment = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["date", "start_time"]

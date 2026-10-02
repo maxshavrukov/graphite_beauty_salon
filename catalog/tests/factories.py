@@ -1,6 +1,17 @@
+"""
+Небольшие фабрики для тестов каталога.
+
+Убирают повторяющееся создание категории/услуги/мастера в каждом
+тесте. Slug по умолчанию генерируется с уникальным счётчиком, чтобы
+можно было создать несколько мастеров/услуг в одном тесте без
+конфликта UniqueConstraint — если нужен конкретный slug, просто
+передай его явно.
+"""
+
 import itertools
+from datetime import date, time
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Optional, Union
 
 from catalog.models import (
     Booking,
@@ -12,11 +23,16 @@ from catalog.models import (
 
 _counter = itertools.count(1)
 
+# DecimalField у нас принимает и Decimal, и int (Django сам
+# приводит), но раз мы даём это как параметр наружу — явно
+# разрешаем оба варианта, а не даём Pylance гадать по дефолту.
+Money = Union[Decimal, int, str]
+
 
 def make_category(
     name: Optional[str] = None,
     slug: Optional[str] = None,
-    **kwargs: Any,
+    **kwargs,
 ) -> ServiceCategory:
     n = next(_counter)
     return ServiceCategory.objects.create(
@@ -30,7 +46,7 @@ def make_service(
     category: Optional[ServiceCategory] = None,
     name: Optional[str] = None,
     slug: Optional[str] = None,
-    **kwargs: Any,
+    **kwargs,
 ) -> Service:
     n = next(_counter)
     return Service.objects.create(
@@ -44,7 +60,7 @@ def make_service(
 def make_master(
     name: Optional[str] = None,
     slug: Optional[str] = None,
-    **kwargs: Any,
+    **kwargs,
 ) -> Master:
     n = next(_counter)
     return Master.objects.create(
@@ -57,9 +73,9 @@ def make_master(
 def make_master_service(
     master: Optional[Master] = None,
     service: Optional[Service] = None,
-    price: Any = Decimal("500.00"),
+    price: Money = 500,
     duration: int = 30,
-    **kwargs: Any,
+    **kwargs,
 ) -> MasterService:
     return MasterService.objects.create(
         master=master or make_master(),
@@ -73,15 +89,15 @@ def make_master_service(
 def make_booking(
     master: Optional[Master] = None,
     service: Optional[Service] = None,
-    target_date: Any = None,
-    start_time: Any = None,
+    target_date: Optional[date] = None,
+    start_time: Optional[time] = None,
     duration: int = 30,
-    price: Any = Decimal("500.00"),
+    price: Money = 500,
     client_name: str = "Тестовый клиент",
     client_phone: str = "0000000000",
-    status: Any = Booking.Status.NEW,
-    source: Any = Booking.Source.ONLINE,
-    **kwargs: Any,
+    status: str = Booking.Status.NEW,
+    source: str = Booking.Source.ONLINE,
+    **kwargs,
 ) -> Booking:
     return Booking.objects.create(
         master=master or make_master(),
