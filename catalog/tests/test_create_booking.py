@@ -6,9 +6,16 @@ from django.db import connection
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
 
-from catalog.models import Booking, ScheduleException, TimeBlock, WorkingHours
+from catalog.models import Booking, TimeBlock
 from catalog.services import SlotUnavailableError, create_booking, get_booking_end_time
-from catalog.tests.factories import make_booking, make_master, make_master_service, make_service
+from catalog.tests.factories import (
+    make_absence,
+    make_booking,
+    make_master,
+    make_master_service,
+    make_service,
+    make_work_day,
+)
 
 
 class GetBookingEndTimeTests(TestCase):
@@ -33,9 +40,9 @@ class CreateBookingTests(TestCase):
         self.service = make_service()
         self.master = make_master()
         self.monday = date(2026, 9, 7)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -154,11 +161,9 @@ class CreateBookingTests(TestCase):
 
         self.assertEqual(Booking.objects.count(), 0)
 
-    def test_raises_when_day_is_closed(self):
+    def test_raises_when_master_is_absent(self):
         make_master_service(self.master, self.service, duration=30)
-        ScheduleException.objects.create(
-            master=self.master, date=self.monday, is_closed=True,
-        )
+        make_absence(self.master, self.monday)
 
         with self.assertRaises(SlotUnavailableError):
             create_booking(
@@ -172,12 +177,10 @@ class CreateBookingTests(TestCase):
 
         self.assertEqual(Booking.objects.count(), 0)
 
-    def test_closed_day_blocks_admin_source_too(self):
-        # Закрытый день нельзя обойти даже административной записью.
+    def test_absence_blocks_admin_source_too(self):
+        # Отсутствие мастера нельзя обойти даже административной записью.
         make_master_service(self.master, self.service, duration=30)
-        ScheduleException.objects.create(
-            master=self.master, date=self.monday, is_closed=True,
-        )
+        make_absence(self.master, self.monday)
 
         with self.assertRaises(SlotUnavailableError):
             create_booking(
@@ -223,9 +226,9 @@ class CreateBookingTests(TestCase):
         today = timezone.localdate()
         now = timezone.localtime()
 
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=today.weekday(),
+            target_date=today,
             start_time=time(0, 0),
             end_time=time(23, 59),
         )
@@ -258,9 +261,9 @@ class CreateBookingTests(TestCase):
         today = timezone.localdate()
         now = timezone.localtime()
 
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=today.weekday(),
+            target_date=today,
             start_time=time(0, 0),
             end_time=time(23, 59),
         )
@@ -284,7 +287,7 @@ class CreateBookingPhoneAndAdminTests(TestCase):
     PHONE/ADMIN может работать вне обычного расписания — но всё
     равно должен уважать блокировки времени и уже существующие
     записи (в отличие от ONLINE, который вообще не может выйти
-    за пределы WorkingHours).
+    за пределы рабочего дня).
     """
 
     def setUp(self):
@@ -292,9 +295,9 @@ class CreateBookingPhoneAndAdminTests(TestCase):
         self.master = make_master()
         self.monday = date(2026, 9, 7)
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(18, 0),
         )
@@ -390,6 +393,37 @@ class CreateBookingPhoneAndAdminTests(TestCase):
                 source=Booking.Source.PHONE,
             )
 
+    def test_online_cannot_book_on_day_not_marked_as_working(self):
+        unmarked_day = self.monday + timedelta(days=1)  # рабочего дня нет
+
+        with self.assertRaises(SlotUnavailableError):
+            create_booking(
+                master=self.master,
+                service=self.service,
+                target_date=unmarked_day,
+                start_time=time(10, 0),
+                client_name="Иван",
+                client_phone="+380000000000",
+                source=Booking.Source.ONLINE,
+            )
+
+    def test_phone_can_book_on_day_not_marked_as_working(self):
+        # Расписание на эту дату забыли заполнить — админ всё равно
+        # может вписать запись вручную.
+        unmarked_day = self.monday + timedelta(days=1)
+
+        booking = create_booking(
+            master=self.master,
+            service=self.service,
+            target_date=unmarked_day,
+            start_time=time(10, 0),
+            client_name="Иван",
+            client_phone="+380000000000",
+            source=Booking.Source.PHONE,
+        )
+
+        self.assertEqual(booking.date, unmarked_day)
+
 
 @skipUnlessDBFeature("has_select_for_update")
 class CreateBookingConcurrencyTests(TransactionTestCase):
@@ -407,13 +441,13 @@ class CreateBookingConcurrencyTests(TransactionTestCase):
         self.service = make_service()
         self.master = make_master()
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        self.monday = date(2026, 9, 7)
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
-        self.monday = date(2026, 9, 7)
 
     def test_only_one_of_two_simultaneous_bookings_succeeds(self):
         barrier = threading.Barrier(2)

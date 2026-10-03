@@ -3,9 +3,16 @@ from datetime import date, time, timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from catalog.models import Booking, ScheduleException, TimeBlock, WorkingHours
+from catalog.models import Booking, TimeBlock
 from catalog.services import get_available_slots
-from catalog.tests.factories import make_booking, make_master, make_master_service, make_service
+from catalog.tests.factories import (
+    make_absence,
+    make_booking,
+    make_master,
+    make_master_service,
+    make_service,
+    make_work_day,
+)
 
 
 class GetAvailableSlotsTests(TestCase):
@@ -16,9 +23,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_returns_all_candidates_when_day_is_free(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -29,9 +36,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_returns_empty_when_master_does_not_provide_service(self):
         # MasterService специально не создаём.
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(18, 0),
         )
@@ -42,9 +49,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_returns_empty_when_master_service_is_inactive(self):
         make_master_service(self.master, self.service, duration=30, is_active=False)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(18, 0),
         )
@@ -53,49 +60,65 @@ class GetAvailableSlotsTests(TestCase):
 
         self.assertEqual(result, [])
 
-    def test_returns_empty_when_day_off(self):
+    def test_returns_empty_when_master_is_absent(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(18, 0),
         )
-        ScheduleException.objects.create(
-            master=self.master, date=self.target_date, is_closed=True,
-        )
+        make_absence(self.master, self.target_date)
 
         result = get_available_slots(self.master, self.service, self.target_date)
 
         self.assertEqual(result, [])
 
-    def test_schedule_exception_overrides_working_hours(self):
+    def test_break_inside_work_day_removes_slots_during_break(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
-            end_time=time(18, 0),
-        )
-        ScheduleException.objects.create(
-            master=self.master,
-            date=self.target_date,
-            is_closed=False,
-            start_time=time(12, 0),
-            end_time=time(13, 0),
+            end_time=time(11, 0),
+            break_start=time(10, 0),
+            break_end=time(10, 30),
         )
 
         result = get_available_slots(
             self.master, self.service, self.target_date, slot_step_minutes=30,
         )
 
-        self.assertEqual(result, [time(12, 0), time(12, 30)])
+        # Перерыв 10:00–10:30 вырезан из дня: остаются 9:00, 9:30 и 10:30.
+        self.assertEqual(result, [time(9, 0), time(9, 30), time(10, 30)])
+
+    def test_returns_empty_when_day_is_not_marked(self):
+        make_master_service(self.master, self.service, duration=30)
+        # Рабочий день не создан: мастер в эту дату не отмечен.
+
+        result = get_available_slots(self.master, self.service, self.target_date)
+
+        self.assertEqual(result, [])
+
+    def test_absence_does_not_affect_other_dates(self):
+        make_master_service(self.master, self.service, duration=30)
+        make_work_day(
+            master=self.master,
+            target_date=self.target_date,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
+        )
+        make_absence(self.master, self.target_date + timedelta(days=1))
+
+        result = get_available_slots(self.master, self.service, self.target_date)
+
+        self.assertEqual(result, [time(9, 0)])
 
     def test_time_block_removes_overlapping_slot(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -113,9 +136,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_active_booking_removes_overlapping_slot(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -133,9 +156,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_cancelled_booking_does_not_remove_slot(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(9, 30),
         )
@@ -154,9 +177,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_uses_master_service_duration_not_arbitrary_value(self):
         make_master_service(self.master, self.service, duration=60)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -169,9 +192,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_excludes_times_within_lead_time_when_date_is_today(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=self.target_date.weekday(),
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(12, 0),
         )
@@ -193,9 +216,9 @@ class GetAvailableSlotsTests(TestCase):
 
     def test_returns_empty_for_today_when_lead_time_crosses_midnight(self):
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=self.target_date.weekday(),
+            target_date=self.target_date,
             start_time=time(23, 0),
             end_time=time(23, 45),
         )
@@ -215,9 +238,9 @@ class GetAvailableSlotsTests(TestCase):
         # "Сейчас 10:05" не должно резать слоты 9:00 на дату,
         # которая ещё не наступила.
         make_master_service(self.master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=self.target_date.weekday(),
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )

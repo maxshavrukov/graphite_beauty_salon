@@ -14,11 +14,13 @@ from decimal import Decimal
 from typing import Optional, Union
 
 from catalog.models import (
+    Absence,
     Booking,
     Master,
     MasterService,
     Service,
     ServiceCategory,
+    WorkDay,
 )
 
 _counter = itertools.count(1)
@@ -110,5 +112,45 @@ def make_booking(
         client_phone=client_phone,
         status=status,
         source=source,
+        **kwargs,
+    )
+
+
+def make_work_day(
+    master: Master,
+    target_date: date,
+    start_time: time = time(9, 0),
+    end_time: time = time(18, 0),
+    break_start: Optional[time] = None,
+    break_end: Optional[time] = None,
+    **kwargs,
+) -> WorkDay:
+    """Рабочий день мастера на конкретную дату (по умолчанию 09:00–18:00)."""
+    return WorkDay.objects.create(
+        master=master,
+        date=target_date,
+        start_time=start_time,
+        end_time=end_time,
+        break_start=break_start,
+        break_end=break_end,
+        **kwargs,
+    )
+
+
+def make_absence(
+    master: Master,
+    start_date: date,
+    end_date: Optional[date] = None,
+    kind: str = Absence.Kind.VACATION,
+    comment: str = "",
+    **kwargs,
+) -> Absence:
+    """Отсутствие мастера (по умолчанию отпуск; без end_date — на один день)."""
+    return Absence.objects.create(
+        master=master,
+        start_date=start_date,
+        end_date=end_date or start_date,
+        kind=kind,
+        comment=comment,
         **kwargs,
     )

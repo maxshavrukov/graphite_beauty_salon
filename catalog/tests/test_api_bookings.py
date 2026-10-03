@@ -6,12 +6,13 @@ from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.test import APIClient
 
-from catalog.models import Booking, WorkingHours
+from catalog.models import Booking
 from catalog.tests.factories import (
     make_booking,
     make_master,
     make_master_service,
     make_service,
+    make_work_day,
 )
 
 URL = "/api/bookings/"
@@ -26,9 +27,9 @@ class BookingCreateApiTests(TestCase):
 
         # Завтра — гарантированно внутри окна записи.
         self.target_date = timezone.localdate() + timedelta(days=1)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=self.target_date.weekday(),
+            target_date=self.target_date,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )

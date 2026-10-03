@@ -150,7 +150,7 @@ CORS_ALLOWED_ORIGINS = []
 # даты и записаться. Обрезаем именно на бэкенде, а не только
 # на фронте — иначе кто угодно сможет обойти лимит прямым запросом
 # к API с произвольной датой.
-BOOKING_MAX_DAYS_AHEAD = 30
+BOOKING_MAX_DAYS_AHEAD = 14
 
 # За сколько минут до начала услуги закрывается онлайн-запись.
 # Мастеру нужно время подготовиться — записаться "через 2 минуты"
@@ -203,6 +203,16 @@ UNFOLD = {
                         "title": "Мастера и графики",
                         "icon": "content_cut",
                         "link": reverse_lazy("admin:catalog_master_changelist"),
+                    },
+                    {
+                        "title": "Рабочие дни",
+                        "icon": "calendar_month",
+                        "link": reverse_lazy("admin:catalog_workday_changelist"),
+                    },
+                    {
+                        "title": "Отсутствия",
+                        "icon": "beach_access",
+                        "link": reverse_lazy("admin:catalog_absence_changelist"),
                     },
                 ],
             },

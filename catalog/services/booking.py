@@ -69,7 +69,7 @@ def validate_booking_slot(
     SlotUnavailableError с понятным текстом.
 
     ONLINE:
-        - только время из рабочего расписания;
+        - только время рабочих дней мастера (WorkDay);
         - только доступные кандидаты;
         - учитываются TimeBlock и активные Booking.
 
@@ -77,7 +77,8 @@ def validate_booking_slot(
         - могут быть созданы вне рабочего расписания;
         - но не могут пересекаться с TimeBlock;
         - не могут пересекаться с активными Booking;
-        - явно закрытый через ScheduleException день остаётся закрытым.
+        - дни отсутствия мастера (отпуск, больничный, отгул)
+          остаются закрытыми для всех источников.
 
     create_booking вызывает эту функцию внутри транзакции, когда мастер
     уже заблокирован, — тогда проверка надёжна. Вызов из формы админки
@@ -105,18 +106,18 @@ def validate_booking_slot(
             "Мастер не оказывает данную услугу.",
         )
 
-    # Явно закрытый день нельзя обойти даже административной
-    # записью. ScheduleException имеет приоритет над обычным
-    # WorkingHours.
-    schedule_exception = (
-        master.schedule_exceptions
-        .filter(date=target_date)
-        .first()
-    )
+    # Отсутствие (отпуск, больничный, отгул) нельзя обойти даже
+    # административной записью. Неотмеченный день — другое дело:
+    # клиенты времени не видят, но админ может вписать запись вручную.
+    absence = master.absences.filter(
+        start_date__lte=target_date,
+        end_date__gte=target_date,
+    ).first()
 
-    if schedule_exception is not None and schedule_exception.is_closed:
+    if absence is not None:
         raise SlotUnavailableError(
-            "На выбранную дату мастер не работает.",
+            "На выбранную дату мастер не работает "
+            f"({absence.get_kind_display().lower()}).",
         )
 
     # Проверяем, что услуга физически помещается в пределах

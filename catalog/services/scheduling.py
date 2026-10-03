@@ -28,32 +28,26 @@ def get_working_intervals(
         (14:00, 18:00),
     ]
 
-    Если мастер в этот день не работает или день закрыт,
-    возвращает пустой список.
+    Источник данных — рабочие дни мастера (WorkDay). Если на эту дату
+    рабочего дня нет, мастер не отмечен и интервалов нет. Отсутствие
+    (отпуск, больничный, отгул) сильнее рабочего дня: пока оно
+    действует, интервалов нет, даже если рабочий день отмечен.
     """
 
-    exception = master.schedule_exceptions.filter(
-        date=target_date,
-    ).first()
+    is_absent = master.absences.filter(
+        start_date__lte=target_date,
+        end_date__gte=target_date,
+    ).exists()
 
-    if exception is not None:
-        if exception.is_closed:
-            return []
+    if is_absent:
+        return []
 
-        return [
-            (exception.start_time, exception.end_time),
-        ]
+    work_day = master.work_days.filter(date=target_date).first()
 
-    weekday = target_date.weekday()
+    if work_day is None:
+        return []
 
-    working_hours = master.working_hours.filter(
-        weekday=weekday,
-    ).order_by("start_time")
-
-    return [
-        (working_hour.start_time, working_hour.end_time)
-        for working_hour in working_hours
-    ]
+    return work_day.get_intervals()
 
 
 def get_candidate_starts(

@@ -1,11 +1,18 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 
-from catalog.models import Booking, ScheduleException, TimeBlock, WorkingHours
+from catalog.models import Absence, Booking, TimeBlock
 from catalog.services import SlotUnavailableError, validate_booking_slot
-from catalog.tests.factories import make_booking, make_master, make_master_service, make_service
+from catalog.tests.factories import (
+    make_absence,
+    make_booking,
+    make_master,
+    make_master_service,
+    make_service,
+    make_work_day,
+)
 
 
 class ValidateBookingSlotTests(TestCase):
@@ -13,9 +20,9 @@ class ValidateBookingSlotTests(TestCase):
         self.service = make_service()
         self.master = make_master()
         self.monday = date(2026, 9, 7)
-        WorkingHours.objects.create(
+        make_work_day(
             master=self.master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -23,7 +30,7 @@ class ValidateBookingSlotTests(TestCase):
             self.master, self.service, price=Decimal("450.00"), duration=30,
         )
 
-    def validate(self, start_time=time(9, 0), source: str=Booking.Source.ONLINE):
+    def validate(self, start_time=time(9, 0), source: str = Booking.Source.ONLINE):
         return validate_booking_slot(
             self.master,
             self.service,
@@ -62,12 +69,8 @@ class ValidateBookingSlotTests(TestCase):
                 time(9, 0),
             )
 
-    def test_raises_when_day_is_closed_even_for_admin(self):
-        ScheduleException.objects.create(
-            master=self.master,
-            date=self.monday,
-            is_closed=True,
-        )
+    def test_raises_when_master_is_absent_even_for_admin(self):
+        make_absence(self.master, self.monday)
 
         with self.assertRaises(SlotUnavailableError):
             self.validate(source=Booking.Source.ADMIN)
@@ -134,3 +137,24 @@ class ValidateBookingSlotTests(TestCase):
     def test_raises_value_error_for_unknown_source(self):
         with self.assertRaises(ValueError):
             self.validate(source="UNKNOWN")
+
+    def test_error_names_the_kind_of_absence(self):
+        make_absence(self.master, self.monday, kind=Absence.Kind.SICK)
+
+        with self.assertRaises(SlotUnavailableError) as context:
+            self.validate(source=Booking.Source.ADMIN)
+
+        self.assertIn("больничный", str(context.exception))
+
+    def test_admin_allows_day_not_marked_as_working(self):
+        unmarked_day = self.monday + timedelta(days=1)
+
+        result = validate_booking_slot(
+            self.master,
+            self.service,
+            unmarked_day,
+            time(10, 0),
+            Booking.Source.ADMIN,
+        )
+
+        self.assertEqual(result, self.master_service)

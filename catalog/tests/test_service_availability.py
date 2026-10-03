@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from catalog.models import WorkingHours
 from catalog.services import (
     get_available_dates_for_master,
     get_available_dates_for_service,
@@ -12,10 +11,12 @@ from catalog.services import (
     get_masters_for_service,
 )
 from catalog.tests.factories import (
+    make_absence,
     make_booking,
     make_master,
     make_master_service,
     make_service,
+    make_work_day,
 )
 
 
@@ -62,9 +63,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
 
         for master in (busy_master, free_master):
             make_master_service(master, self.service, duration=30)
-            WorkingHours.objects.create(
+            make_work_day(
                 master=master,
-                weekday=WorkingHours.Weekday.MONDAY,
+                target_date=self.monday,
                 start_time=time(9, 0),
                 end_time=time(9, 30),
             )
@@ -87,9 +88,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
     def test_excludes_date_when_no_master_is_free(self):
         master = make_master()
         make_master_service(master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(9, 30),
         )
@@ -110,15 +111,15 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
     def test_excludes_date_outside_range(self):
         master = make_master()
         make_master_service(master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
-        WorkingHours.objects.create(
+        make_work_day(
             master=master,
-            weekday=WorkingHours.Weekday.TUESDAY,
+            target_date=self.tuesday,
             start_time=time(9, 0),
             end_time=time(10, 0),
         )
@@ -137,14 +138,31 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
 
         self.assertEqual(result, [])
 
+    def test_excludes_date_when_only_master_is_absent(self):
+        master = make_master()
+        make_master_service(master, self.service, duration=30)
+        make_work_day(
+            master=master,
+            target_date=self.monday,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
+        )
+        make_absence(master, self.monday)
+
+        result = get_available_dates_for_service(
+            self.service, date_from=self.monday, date_to=self.monday,
+        )
+
+        self.assertEqual(result, [])
+
 
 class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
     def test_includes_date_when_master_is_free(self):
         master = make_master()
         make_master_service(master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(9, 30),
         )
@@ -158,9 +176,9 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
     def test_excludes_date_when_master_is_fully_booked(self):
         master = make_master()
         make_master_service(master, self.service, duration=30)
-        WorkingHours.objects.create(
+        make_work_day(
             master=master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(9, 30),
         )
@@ -188,9 +206,9 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
         make_master_service(target_master, self.service, duration=30)
         make_master_service(other_master, self.service, duration=30)
 
-        WorkingHours.objects.create(
+        make_work_day(
             master=other_master,
-            weekday=WorkingHours.Weekday.MONDAY,
+            target_date=self.monday,
             start_time=time(9, 0),
             end_time=time(9, 30),
         )
@@ -202,6 +220,24 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
 
         self.assertEqual(result, [])
 
+    def test_excludes_dates_inside_absence_range(self):
+        master = make_master()
+        make_master_service(master, self.service, duration=30)
+        for day in (self.monday, self.tuesday):
+            make_work_day(
+                master=master,
+                target_date=day,
+                start_time=time(9, 0),
+                end_time=time(9, 30),
+            )
+        make_absence(master, self.monday)  # отсутствие только в понедельник
+
+        result = get_available_dates_for_master(
+            master, self.service, date_from=self.monday, date_to=self.tuesday,
+        )
+
+        self.assertEqual(result, [self.tuesday])
+
 
 class GetAvailableTimesForServiceTests(ServiceAvailabilityTestsBase):
     def test_merges_times_from_different_masters(self):
@@ -211,13 +247,17 @@ class GetAvailableTimesForServiceTests(ServiceAvailabilityTestsBase):
         make_master_service(master_a, self.service, duration=30)
         make_master_service(master_b, self.service, price=600, duration=30)
 
-        WorkingHours.objects.create(
-            master=master_a, weekday=WorkingHours.Weekday.MONDAY,
-            start_time=time(9, 0), end_time=time(9, 30),
+        make_work_day(
+            master=master_a,
+            target_date=self.monday,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
         )
-        WorkingHours.objects.create(
-            master=master_b, weekday=WorkingHours.Weekday.MONDAY,
-            start_time=time(15, 0), end_time=time(15, 30),
+        make_work_day(
+            master=master_b,
+            target_date=self.monday,
+            start_time=time(15, 0),
+            end_time=time(15, 30),
         )
 
         result = get_available_times_for_service(
@@ -230,9 +270,11 @@ class GetAvailableTimesForServiceTests(ServiceAvailabilityTestsBase):
         for _ in range(2):
             master = make_master()
             make_master_service(master, self.service, duration=30)
-            WorkingHours.objects.create(
-                master=master, weekday=WorkingHours.Weekday.MONDAY,
-                start_time=time(9, 0), end_time=time(9, 30),
+            make_work_day(
+                master=master,
+                target_date=self.monday,
+                start_time=time(9, 0),
+                end_time=time(9, 30),
             )
 
         result = get_available_times_for_service(
@@ -251,9 +293,11 @@ class GetAvailableMastersForSlotTests(ServiceAvailabilityTestsBase):
         make_master_service(busy_master, self.service, price=Decimal("600.00"), duration=30)
 
         for master in (free_master, busy_master):
-            WorkingHours.objects.create(
-                master=master, weekday=WorkingHours.Weekday.MONDAY,
-                start_time=time(9, 0), end_time=time(9, 30),
+            make_work_day(
+                master=master,
+                target_date=self.monday,
+                start_time=time(9, 0),
+                end_time=time(9, 30),
             )
 
         make_booking(
@@ -274,9 +318,11 @@ class GetAvailableMastersForSlotTests(ServiceAvailabilityTestsBase):
     def test_ignores_master_not_offering_service(self):
         master = make_master()
         make_master_service(master, self.other_service, duration=30)
-        WorkingHours.objects.create(
-            master=master, weekday=WorkingHours.Weekday.MONDAY,
-            start_time=time(9, 0), end_time=time(9, 30),
+        make_work_day(
+            master=master,
+            target_date=self.monday,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
         )
 
         result = get_available_masters_for_slot(self.service, self.monday, time(9, 0))
@@ -286,9 +332,11 @@ class GetAvailableMastersForSlotTests(ServiceAvailabilityTestsBase):
     def test_returns_empty_when_no_master_free_at_that_exact_time(self):
         master = make_master()
         make_master_service(master, self.service, duration=30)
-        WorkingHours.objects.create(
-            master=master, weekday=WorkingHours.Weekday.MONDAY,
-            start_time=time(9, 0), end_time=time(9, 30),
+        make_work_day(
+            master=master,
+            target_date=self.monday,
+            start_time=time(9, 0),
+            end_time=time(9, 30),
         )
 
         result = get_available_masters_for_slot(self.service, self.monday, time(10, 0))
