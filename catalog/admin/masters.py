@@ -4,26 +4,13 @@ from django import forms
 from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
-from ..models import Master, MasterService, ScheduleException, TimeBlock
-from .master_forms import WEEK_FIELDS, MasterAdminForm, MasterBaseForm
+from ..models import Absence, Master, MasterService, TimeBlock
 from .widgets import time_field
 
 
-# Формы для блоков внутри карточки мастера
-
-
-class ScheduleExceptionInlineForm(forms.ModelForm):
-    start_time = time_field("Начало", required=False)
-    end_time = time_field("Конец", required=False)
-
-    class Meta:
-        model = ScheduleException
-        fields = ("date", "is_closed", "start_time", "end_time", "reason")
-        labels = {
-            "date": "Дата",
-            "is_closed": "Выходной",
-            "reason": "Причина",
-        }
+# ---------------------------------------------------------------------------
+# Форма для вкладки «Занятое время»
+# ---------------------------------------------------------------------------
 
 
 class TimeBlockInlineForm(forms.ModelForm):
@@ -36,7 +23,9 @@ class TimeBlockInlineForm(forms.ModelForm):
         labels = {"date": "Дата", "reason": "Причина"}
 
 
-# Блоки (вкладки) внутри карточки мастера
+# ---------------------------------------------------------------------------
+# Вкладки внутри карточки мастера
+# ---------------------------------------------------------------------------
 
 
 class MasterServiceInline(TabularInline):
@@ -48,13 +37,13 @@ class MasterServiceInline(TabularInline):
     verbose_name_plural = "Услуги и цены"
 
 
-class ScheduleExceptionInline(TabularInline):
-    model = ScheduleException
-    form = ScheduleExceptionInlineForm
+class AbsenceInline(TabularInline):
+    model = Absence
     extra = 0
     tab = True
-    verbose_name = "Особый день"
-    verbose_name_plural = "Особые дни"
+    fields = ("kind", "start_date", "end_date", "comment")
+    verbose_name = "Отсутствие"
+    verbose_name_plural = "Отпуск и отсутствия"
 
 
 class TimeBlockInline(TabularInline):
@@ -66,12 +55,13 @@ class TimeBlockInline(TabularInline):
     verbose_name_plural = "Занятое время"
 
 
-# Сам мастер
+# ---------------------------------------------------------------------------
+# Сам мастер и его прайс
+# ---------------------------------------------------------------------------
 
 
 @admin.register(Master)
 class MasterAdmin(ModelAdmin):
-    form = MasterAdminForm
     list_display = (
         "name",
         "slug",
@@ -82,41 +72,11 @@ class MasterAdmin(ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name", "bio")
     prepopulated_fields = {"slug": ("name",)}
-
-    fieldsets = (
-        (
-            None,
-            {"fields": ("name", "slug", "is_active", "sort_order")},
-        ),
-        (
-            "Обычная неделя",
-            {
-                "description": (
-                    "Отметьте рабочие дни и выберите время. Перерыв "
-                    "необязателен. Дни без галочки — выходные."
-                ),
-                "fields": WEEK_FIELDS,
-            },
-        ),
-        (
-            "О мастере",
-            {"fields": ("photo", "bio")},
-        ),
-    )
-
     inlines = [
         MasterServiceInline,
-        ScheduleExceptionInline,
+        AbsenceInline,
         TimeBlockInline,
     ]
-
-    def save_related(self, request, form, formsets, change):
-        # К этому моменту мастер уже сохранён и у него есть id,
-        # поэтому можно записывать его недельный график.
-        super().save_related(request, form, formsets, change)
-
-        if isinstance(form, MasterBaseForm):
-            form.save_week()
 
 
 @admin.register(MasterService)

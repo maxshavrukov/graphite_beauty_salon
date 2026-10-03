@@ -5,6 +5,7 @@ from django.db import models
 
 # Create your models here.
 
+
 class ServiceCategory(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=120, unique=True)
@@ -21,6 +22,7 @@ class ServiceCategory(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Service(models.Model):
     category = models.ForeignKey(
@@ -46,6 +48,7 @@ class Service(models.Model):
     def __str__(self):
         return self.name
 
+
 class Master(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=120, unique=True)
@@ -56,8 +59,6 @@ class Master(models.Model):
 
     if TYPE_CHECKING:
         master_services: Any
-        working_hours: Any
-        schedule_exceptions: Any
         time_blocks: Any
         bookings: Any
         work_days: Any
@@ -70,6 +71,7 @@ class Master(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class MasterService(models.Model):
     master = models.ForeignKey(
@@ -104,142 +106,6 @@ class MasterService(models.Model):
     def __str__(self):
         return f"{self.master} — {self.service}"
 
-class WorkingHours(models.Model):
-    class Weekday(models.IntegerChoices):
-        MONDAY = 0, "Понедельник"
-        TUESDAY = 1, "Вторник"
-        WEDNESDAY = 2, "Среда"
-        THURSDAY = 3, "Четверг"
-        FRIDAY = 4, "Пятница"
-        SATURDAY = 5, "Суббота"
-        SUNDAY = 6, "Воскресенье"
-
-    master = models.ForeignKey(
-        Master,
-        on_delete=models.CASCADE,
-        related_name="working_hours",
-    )
-    weekday = models.PositiveSmallIntegerField(
-        choices=Weekday.choices,
-    )
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-
-    if TYPE_CHECKING:
-        # Django создаёт этот метод динамически из-за choices=
-        # у поля weekday. mypy-плагин django-stubs видит это
-        # автоматически, а Pylance/Pyright — нет, поэтому здесь
-        # даём ему подсказку вручную.
-        def get_weekday_display(self) -> str: ...
-        master_id: int | None
-
-    class Meta:
-        ordering = ["weekday", "start_time"]
-        verbose_name = "Рабочее время"
-        verbose_name_plural = "Рабочее время"
-
-    def clean(self):
-        if self.start_time is None or self.end_time is None:
-            return
-
-        if self.start_time >= self.end_time:
-            raise ValidationError(
-                "Время окончания должно быть позже времени начала."
-            )
-
-        if self.master_id is None:
-            return
-
-        siblings = WorkingHours.objects.filter(
-            master=self.master,
-            weekday=self.weekday,
-        ).exclude(pk=self.pk)
-
-        for other in siblings:
-            overlaps = (
-                self.start_time < other.end_time
-                and self.end_time > other.start_time
-            )
-
-            if overlaps:
-                raise ValidationError(
-                    "Пересекается с уже существующим рабочим "
-                    f"интервалом этого мастера в этот день недели: "
-                    f"{other.start_time:%H:%M}–{other.end_time:%H:%M}."
-                )
-
-    def __str__(self):
-        return (
-            f"{self.master} — "
-            f"{self.get_weekday_display()} "
-            f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
-        )
-
-class ScheduleException(models.Model):
-    master = models.ForeignKey(
-        Master,
-        on_delete=models.CASCADE,
-        related_name="schedule_exceptions",
-    )
-    date = models.DateField()
-    is_closed = models.BooleanField(default=False)
-    start_time = models.TimeField(blank=True, null=True)
-    end_time = models.TimeField(blank=True, null=True)
-    reason = models.CharField(max_length=255, blank=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["master", "date"],
-                name="unique_master_schedule_exception",
-            ),
-            models.CheckConstraint(
-                condition=(
-                    models.Q(
-                        is_closed=True,
-                        start_time__isnull=True,
-                        end_time__isnull=True,
-                    )
-                    | models.Q(
-                        is_closed=False,
-                        start_time__isnull=False,
-                        end_time__isnull=False,
-                    )
-                ),
-                name="schedule_exception_time_consistency",
-            ),
-        ]
-        ordering = ["date"]
-        verbose_name = "Исключение из расписания"
-        verbose_name_plural = "Исключения из расписания"
-
-    def clean(self):
-        if self.is_closed:
-            if self.start_time is not None or self.end_time is not None:
-                raise ValidationError(
-                    "Для закрытого дня время начала и окончания "
-                    "должно быть пустым."
-                )
-        else:
-            if self.start_time is None or self.end_time is None:
-                raise ValidationError(
-                    "Для рабочего дня необходимо указать время начала "
-                    "и окончания."
-                )
-
-            if self.start_time >= self.end_time:
-                raise ValidationError(
-                    "Время окончания должно быть позже времени начала."
-                )
-
-    def __str__(self):
-        if self.is_closed:
-            return f"{self.master} — {self.date} — выходной"
-
-        return (
-            f"{self.master} — {self.date} — "
-            f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
-        )
 
 class TimeBlock(models.Model):
     master = models.ForeignKey(
@@ -268,6 +134,7 @@ class TimeBlock(models.Model):
             f"{self.master} — {self.date} — "
             f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
         )
+
 
 class Booking(models.Model):
     class Status(models.TextChoices):
@@ -335,7 +202,7 @@ class Booking(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Новое расписание: рабочие дни и отсутствия мастера
+# Расписание мастера: рабочие дни и отсутствия
 # ---------------------------------------------------------------------------
 
 
@@ -345,10 +212,6 @@ class WorkDay(models.Model):
     перерыв. Нет записи на дату — значит, в этот день мастер не отмечен
     (клиенты времени не видят, но админ может вписать запись вручную).
     """
-
-    if TYPE_CHECKING:
-        # Django создаёт master_id динамически из-за ForeignKey master.
-        master_id: int
 
     master = models.ForeignKey(
         Master,
@@ -361,6 +224,10 @@ class WorkDay(models.Model):
     end_time = models.TimeField("Конец работы")
     break_start = models.TimeField("Перерыв с", null=True, blank=True)
     break_end = models.TimeField("Перерыв до", null=True, blank=True)
+
+    if TYPE_CHECKING:
+        # Django создаёт master_id динамически из-за ForeignKey master.
+        master_id: int
 
     class Meta:
         ordering = ["date"]
@@ -444,13 +311,6 @@ class Absence(models.Model):
     отменить, рабочие дни снова действуют.
     """
 
-    if TYPE_CHECKING:
-        master_id: int | None
-        # Django создаёт этот метод динамически из-за choices у поля kind;
-        # подсказка нужна только редактору (Pylance), при запуске
-        # этот блок не выполняется.
-        def get_kind_display(self) -> str: ...
-
     class Kind(models.TextChoices):
         VACATION = "VACATION", "Отпуск"
         SICK = "SICK", "Больничный"
@@ -471,6 +331,14 @@ class Absence(models.Model):
     start_date = models.DateField("С даты")
     end_date = models.DateField("По дату (включительно)")
     comment = models.CharField("Комментарий", max_length=200, blank=True)
+
+    if TYPE_CHECKING:
+        master_id: int | None
+
+        # Django создаёт этот метод динамически из-за choices у поля kind;
+        # подсказка нужна только редактору (Pylance), при запуске
+        # этот блок не выполняется.
+        def get_kind_display(self) -> str: ...
 
     class Meta:
         ordering = ["start_date"]

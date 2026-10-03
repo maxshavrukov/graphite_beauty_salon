@@ -4,7 +4,6 @@
 - scheduling.py   — расчёт доступных слотов у одного мастера
 - availability.py — агрегация доступности по всем мастерам услуги
 - booking.py       — создание записи с защитой от гонки
-- weekly_schedule.py — недельный график мастера: день с перерывом <-> интервалы
 
 Всё реэкспортируется отсюда, поэтому снаружи (в тестах, вьюхах)
 ничего менять не нужно — `from catalog.services import X` работает
@@ -32,14 +31,6 @@ from .scheduling import (
     get_candidate_starts,
     get_working_intervals,
     intervals_overlap,
-)
-from .weekly_schedule import (
-    DaySchedule,
-    day_to_intervals,
-    get_day_error,
-    get_weekly_schedule,
-    intervals_to_day,
-    save_weekly_schedule,
 )
 
 __all__ = [
