@@ -11,7 +11,7 @@ from datetime import timedelta
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
 from django.utils import timezone
-from django.utils.html import format_html_join
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin
 from unfold.decorators import action, display
@@ -61,6 +61,49 @@ class BookingDayFilter(admin.SimpleListFilter):
         return queryset
 
 
+class BookingAwaitingFilter(admin.SimpleListFilter):
+    """
+    «Ждут звонка»: новые заявки, которые админ ещё не подтвердил.
+
+    В названии сразу видно, сколько их. При включённом фильтре самые
+    старые заявки идут первыми (см. BookingAdmin.get_ordering), чтобы
+    никто не ждал звонка дольше остальных.
+    """
+
+    title = "Подтверждение"
+    parameter_name = "awaiting"
+
+    def lookups(self, request, model_admin):
+        count = (
+            model_admin.get_queryset(request)
+            .filter(status=Booking.Status.NEW)
+            .count()
+        )
+        return (("yes", f"Ждут звонка ({count})"),)
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(status=Booking.Status.NEW)
+
+        return queryset
+
+
+def format_waiting(delta: timedelta) -> str:
+    """Сколько ждёт заявка: «5 мин», «3 ч», «2 д»."""
+    minutes = int(delta.total_seconds() // 60)
+
+    if minutes < 1:
+        return "только что"
+
+    if minutes < 60:
+        return f"{minutes} мин"
+
+    if minutes < 24 * 60:
+        return f"{minutes // 60} ч"
+
+    return f"{minutes // (24 * 60)} д"
+
+
 # Цвет значка статуса в списке. Ключ — подпись статуса, как её видит админ.
 STATUS_COLORS: dict[str, str] = {
     str(Booking.Status.NEW.label): "warning",
@@ -77,15 +120,17 @@ class BookingAdmin(ModelAdmin):
         "date",
         "start_time",
         "client_name",
-        "client_phone",
+        "phone_link",
         "master",
         "service",
         "price",
         "duration",
         "status_badge",
+        "waiting",
         "source",
     )
     list_filter = (
+        BookingAwaitingFilter,
         BookingDayFilter,
         "status",
         "master",
@@ -106,6 +151,13 @@ class BookingAdmin(ModelAdmin):
         "mark_no_show",
         "cancel_bookings",
     ]
+
+    def get_ordering(self, request):
+        # «Ждут звонка»: сначала те, кто оставил заявку раньше всех.
+        if request.GET.get("awaiting") == "yes":
+            return ("created_at", "id")
+
+        return super().get_ordering(request)
 
     # --- Формы: новая запись и существующая выглядят по-разному ----------
 
@@ -287,6 +339,23 @@ class BookingAdmin(ModelAdmin):
     )
     def status_badge(self, obj):
         return obj.get_status_display()
+
+    @display(description="Телефон", ordering="client_phone")
+    def phone_link(self, obj):
+        # Ссылка tel: на телефоне или в программе для звонков набирает номер
+        # одним нажатием.
+        return format_html(
+            '<a href="tel:{}">{}</a>',
+            obj.client_phone,
+            obj.client_phone,
+        )
+
+    @display(description="Ждёт", ordering="created_at")
+    def waiting(self, obj):
+        if obj.status != Booking.Status.NEW:
+            return "—"
+
+        return format_waiting(timezone.now() - obj.created_at)
 
     @display(description="История")
     def history(self, obj):

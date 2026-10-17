@@ -1,4 +1,3 @@
-import re
 from datetime import timedelta
 
 from django.conf import settings
@@ -6,6 +5,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Booking, Master, MasterService, Service, ServiceCategory
+from .phone import InvalidPhoneError, normalize_ua_phone
 from .services import create_booking
 
 
@@ -100,17 +100,13 @@ class BookingCreateSerializer(serializers.Serializer):
         return value
 
     def validate_client_phone(self, value):
-        # Оставляем только цифры и ведущий "+", чтобы "+38 (050) 123-45-67"
-        # и "380501234567" не превращались в разные строки в базе.
-        has_plus = value.strip().startswith("+")
-        digits = re.sub(r"\D", "", value)
-
-        if not (10 <= len(digits) <= 15):
-            raise serializers.ValidationError(
-                "Укажите корректный номер телефона.",
-            )
-
-        return ("+" if has_plus else "") + digits
+        # Сайт показывает префикс "+38", клиент вводит "0990172668", но
+        # "+380990172668" и "+38 (099) 017-26-68" тоже приходят: в базу
+        # всё попадает одним форматом +380XXXXXXXXX.
+        try:
+            return normalize_ua_phone(value)
+        except InvalidPhoneError as error:
+            raise serializers.ValidationError(str(error)) from error
 
     def validate(self, attrs):
         # Пара мастер+услуга должна существовать: иначе это ошибка
@@ -143,7 +139,14 @@ class BookingCreateSerializer(serializers.Serializer):
 
 
 class BookingSerializer(serializers.ModelSerializer):
-    """Ответ клиенту после создания записи."""
+    """
+    Ответ клиенту после создания записи.
+
+    Заявка создаётся со статусом NEW: запись ещё не подтверждена, админ
+    перезвонит. Поэтому сюда входят имя и номер в том виде, в каком они
+    сохранены (+380XXXXXXXXX). Сайт может показать «Мы перезвоним на
+    +380990172668 и подтвердим запись» и клиент заметит опечатку в номере.
+    """
 
     master = serializers.CharField(source="master.name")
     service = serializers.CharField(source="service.name")
@@ -159,4 +162,6 @@ class BookingSerializer(serializers.ModelSerializer):
             "price",
             "duration",
             "status",
+            "client_name",
+            "client_phone",
         ]

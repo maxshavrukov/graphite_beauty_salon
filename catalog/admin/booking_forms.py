@@ -12,6 +12,7 @@ from django.utils import timezone
 from unfold.widgets import UnfoldAdminDateWidget, UnfoldAdminSelectWidget
 
 from ..models import Booking, Master, Service
+from ..phone import InvalidPhoneError, normalize_ua_phone
 from ..services import (
     SlotUnavailableError,
     can_change_status,
@@ -19,6 +20,16 @@ from ..services import (
     validate_reschedule,
 )
 from .widgets import time_field
+
+
+def clean_phone(value):
+    """Номер клиента в едином формате или ошибка поля формы."""
+    try:
+        return normalize_ua_phone(value)
+    except InvalidPhoneError as error:
+        raise ValidationError(
+            "Введите номер в формате 0991234567 или +380991234567.",
+        ) from error
 
 
 class BookingCreateForm(forms.ModelForm):
@@ -75,6 +86,9 @@ class BookingCreateForm(forms.ModelForm):
             service_field.queryset = Service.objects.filter(is_active=True)
 
         self.fields["date"].initial = timezone.localdate()
+
+    def clean_client_phone(self):
+        return clean_phone(self.cleaned_data["client_phone"])
 
     def clean(self):
         cleaned_data = super().clean()
@@ -188,6 +202,9 @@ class BookingChangeForm(forms.ModelForm):
 
         self.fields["new_date"].initial = booking.date
         self.fields["new_start_time"].initial = booking.start_time
+
+    def clean_client_phone(self):
+        return clean_phone(self.cleaned_data["client_phone"])
 
     def clean_status(self):
         new_status = self.cleaned_data["status"]
