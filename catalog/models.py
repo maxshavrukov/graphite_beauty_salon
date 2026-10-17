@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -149,6 +150,33 @@ class Booking(models.Model):
         PHONE = "PHONE", "Телефон"
         ADMIN = "ADMIN", "Администратор"
 
+    # Статусы, при которых запись занимает время мастера. Единственное
+    # место, где это решено: расчёт слотов, проверка записи, редактор
+    # расписания и админка берут список отсюда. Добавляя новый статус,
+    # решите, занимает ли он время, и при необходимости поправьте кортеж.
+    ACTIVE_STATUSES = (Status.NEW, Status.CONFIRMED)
+
+    # Какие смены статуса разрешены: ключ — текущий статус, значение —
+    # статусы, в которые запись можно перевести. Единственное место, где
+    # это решено: форма в админке, массовые действия и сервис
+    # change_booking_status берут правила отсюда.
+    #
+    # NEW -> COMPLETED / NO_SHOW нарочно нет: запись сначала подтверждают,
+    # а уже потом отмечают визит. COMPLETED <-> NO_SHOW оставлены для
+    # исправления ошибки администратора. Из CANCELLED выхода нет: время
+    # уже могли занять, а проверок при смене статуса нет.
+    ALLOWED_TRANSITIONS = {
+        Status.NEW: (Status.CONFIRMED, Status.CANCELLED),
+        Status.CONFIRMED: (
+            Status.COMPLETED,
+            Status.NO_SHOW,
+            Status.CANCELLED,
+        ),
+        Status.COMPLETED: (Status.NO_SHOW,),
+        Status.NO_SHOW: (Status.COMPLETED,),
+        Status.CANCELLED: (),
+    }
+
     master = models.ForeignKey(
         Master,
         on_delete=models.PROTECT,
@@ -189,6 +217,9 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    if TYPE_CHECKING:
+        events: Any
+
     class Meta:
         ordering = ["date", "start_time"]
         verbose_name = "Запись"
@@ -199,6 +230,47 @@ class Booking(models.Model):
             f"{self.date} {self.start_time:%H:%M} — "
             f"{self.client_name} — {self.master}"
         )
+
+
+class BookingEvent(models.Model):
+    """
+    Журнал записи: кто и когда её создал, перенёс или сменил статус.
+
+    Строки только добавляются, а не правятся. По ним админ видит историю
+    записи, а позже на них же будут строиться уведомления клиенту.
+    """
+
+    class Kind(models.TextChoices):
+        CREATED = "CREATED", "Создана"
+        STATUS = "STATUS", "Смена статуса"
+        RESCHEDULED = "RESCHEDULED", "Изменение записи"
+
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    # Кто сделал: сотрудник из админки. Пусто — клиент с сайта или система.
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    from_status = models.CharField(max_length=20, blank=True)
+    to_status = models.CharField(max_length=20, blank=True)
+    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        verbose_name = "Событие записи"
+        verbose_name_plural = "События записей"
+
+    def __str__(self):
+        return f"{self.booking_id} — {self.kind} — {self.created_at:%Y-%m-%d %H:%M}"
 
 
 # ---------------------------------------------------------------------------

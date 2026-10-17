@@ -33,9 +33,6 @@ from django.utils import timezone
 
 from ..models import Absence, Booking, Master, WorkDay
 
-# Записи, которые занимают время мастера (отменённые и завершённые — нет).
-ACTIVE_BOOKING_STATUSES = (Booking.Status.NEW, Booking.Status.CONFIRMED)
-
 # За сколько дней до конца расписания предупреждать админа.
 DEFAULT_WARNING_DAYS = 21
 
@@ -264,7 +261,7 @@ def find_active_bookings(master: Master, dates: Iterable[date]) -> list[Booking]
         Booking.objects.filter(
             master=master,
             date__in=unique_dates,
-            status__in=ACTIVE_BOOKING_STATUSES,
+            status__in=Booking.ACTIVE_STATUSES,
         ).order_by("date", "start_time")
     )
 
@@ -279,7 +276,7 @@ def find_active_bookings_in_range(
         Booking.objects.filter(
             master=master,
             date__range=(start_date, end_date),
-            status__in=ACTIVE_BOOKING_STATUSES,
+            status__in=Booking.ACTIVE_STATUSES,
         ).order_by("date", "start_time")
     )
 
@@ -487,7 +484,7 @@ def get_month_calendar(
         for row in Booking.objects.filter(
             master=master,
             date__range=(first_day, last_day),
-            status__in=ACTIVE_BOOKING_STATUSES,
+            status__in=Booking.ACTIVE_STATUSES,
         )
         .values("date")
         .annotate(total=Count("id"))

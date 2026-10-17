@@ -16,7 +16,7 @@ from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
 
-from ..models import Booking, Master, MasterService, Service
+from ..models import Booking, BookingEvent, Master, MasterService, Service
 from .scheduling import get_active_bookings, get_available_slots, intervals_overlap
 
 
@@ -60,6 +60,9 @@ def validate_booking_slot(
     start_time: time,
     source: str = Booking.Source.ONLINE,
     slot_step_minutes: int = 15,
+    *,
+    exclude_booking_id: int | None = None,
+    duration_minutes: int | None = None,
 ) -> MasterService:
     """
     Проверяет, можно ли создать такую запись. Ничего не создаёт.
@@ -80,6 +83,14 @@ def validate_booking_slot(
         - дни отсутствия мастера (отпуск, больничный, отгул)
           остаются закрытыми для всех источников.
 
+    exclude_booking_id и duration_minutes нужны переносу существующей
+    записи (reschedule_booking) и только для PHONE / ADMIN:
+
+        - exclude_booking_id — эта запись не считается занятым временем,
+          иначе при переносе она мешала бы сама себе;
+        - duration_minutes — проверять по длительности самой записи
+          (она сохранена при создании), а не по текущему прайсу мастера.
+
     create_booking вызывает эту функцию внутри транзакции, когда мастер
     уже заблокирован, — тогда проверка надёжна. Вызов из формы админки
     без блокировки нужен только для понятной ошибки заранее: если в
@@ -89,6 +100,14 @@ def validate_booking_slot(
     if source not in Booking.Source.values:
         raise ValueError(
             f"Недопустимый источник записи: {source}",
+        )
+
+    if source == Booking.Source.ONLINE and (
+        exclude_booking_id is not None or duration_minutes is not None
+    ):
+        raise ValueError(
+            "exclude_booking_id и duration_minutes не поддерживаются "
+            "для онлайн-записи.",
         )
 
     if not master.is_active:
@@ -124,7 +143,11 @@ def validate_booking_slot(
     # одного календарного дня.
     booking_end_time = get_booking_end_time(
         start_time,
-        master_service.duration,
+        (
+            duration_minutes
+            if duration_minutes is not None
+            else master_service.duration
+        ),
     )
 
     if source == Booking.Source.ONLINE:
@@ -170,6 +193,9 @@ def validate_booking_slot(
             target_date,
         )
 
+        if exclude_booking_id is not None:
+            active_bookings = active_bookings.exclude(pk=exclude_booking_id)
+
         has_booking_overlap = any(
             intervals_overlap(
                 start_time,
@@ -201,6 +227,7 @@ def create_booking(
     source: str = Booking.Source.ONLINE,
     comment: str = "",
     slot_step_minutes: int = 15,
+    actor=None,
 ):
     """
     Создаёт запись клиента с повторной проверкой доступности
@@ -210,6 +237,9 @@ def create_booking(
 
     При создании Booking цена и длительность берутся из
     MasterService и сохраняются как исторический snapshot.
+
+    actor — сотрудник, создающий запись из админки (для журнала);
+    для записи с сайта не передаётся.
     """
 
     if source not in Booking.Source.values:
@@ -243,6 +273,13 @@ def create_booking(
             status=Booking.Status.NEW,
             source=source,
             comment=comment,
+        )
+
+        BookingEvent.objects.create(
+            booking=booking,
+            kind=BookingEvent.Kind.CREATED,
+            actor=actor,
+            to_status=booking.status,
         )
 
     return booking

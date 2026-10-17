@@ -1,20 +1,30 @@
-"""Админка записей: список, фильтры, действия и создание записи."""
+"""
+Админка записей: список, фильтры, действия, создание и изменение записи.
+
+Любое изменение существующей записи (статус, перенос) идёт через сервисы
+change_booking_status и reschedule_booking: они проверяют правила, блокируют
+запись от гонки и пишут журнал. Напрямую в таблицу админка не пишет.
+"""
 
 from datetime import timedelta
 
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
 from django.utils import timezone
+from django.utils.html import format_html_join
+from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin
 from unfold.decorators import action, display
 
-from ..models import Booking
-from ..services import SlotUnavailableError, create_booking
-from .booking_forms import (
-    ACTIVE_BOOKING_STATUSES,
-    BookingChangeForm,
-    BookingCreateForm,
+from ..models import Booking, BookingEvent
+from ..services import (
+    BookingStateError,
+    SlotUnavailableError,
+    change_booking_status,
+    create_booking,
+    reschedule_booking,
 )
+from .booking_forms import BookingChangeForm, BookingCreateForm
 
 
 class BookingDayFilter(admin.SimpleListFilter):
@@ -111,20 +121,20 @@ class BookingAdmin(ModelAdmin):
                 ("Дополнительно", {"fields": ("source",)}),
             )
 
+        # Активную запись можно перенести (поля new_*), закрытую только
+        # смотреть: мастер, услуга, дата и время показываются текстом.
+        if obj.status in Booking.ACTIVE_STATUSES:
+            slot_fields = (
+                "new_master",
+                "new_service",
+                "new_date",
+                "new_start_time",
+            )
+        else:
+            slot_fields = ("master", "service", "date", "start_time")
+
         return (
-            (
-                "Запись",
-                {
-                    "fields": (
-                        "master",
-                        "service",
-                        "date",
-                        "start_time",
-                        "price",
-                        "duration",
-                    ),
-                },
-            ),
+            ("Запись", {"fields": (*slot_fields, "price", "duration")}),
             ("Клиент", {"fields": ("client_name", "client_phone")}),
             (
                 "Статус",
@@ -138,31 +148,38 @@ class BookingAdmin(ModelAdmin):
                     ),
                 },
             ),
+            ("История", {"fields": ("history",)}),
         )
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
 
-        return (
-            "master",
-            "service",
-            "date",
-            "start_time",
+        readonly = [
             "price",
             "duration",
             "source",
             "created_at",
             "updated_at",
-        )
+            "history",
+        ]
+
+        if obj.status not in Booking.ACTIVE_STATUSES:
+            readonly += ["master", "service", "date", "start_time"]
+
+        return tuple(readonly)
 
     # --- Создание записи идёт только через create_booking ----------------
 
     def save_model(self, request, obj, form, change):
         # isinstance — не только защита, но и подсказка для редактора:
         # дальше он знает, что obj это Booking и у него есть master, date...
-        if change or not isinstance(obj, Booking):
+        if not isinstance(obj, Booking):
             super().save_model(request, obj, form, change)
+            return
+
+        if change:
+            self._save_changes(request, obj, form)
             return
 
         created = create_booking(
@@ -174,16 +191,61 @@ class BookingAdmin(ModelAdmin):
             client_phone=obj.client_phone,
             source=obj.source,
             comment=obj.comment,
+            actor=request.user,
         )
 
+        self._copy_saved_fields(obj, created)
+
+    @staticmethod
+    def _copy_saved_fields(obj, saved):
         # Дальше админка продолжает работать с obj (журнал действий,
         # переход на другую страницу), поэтому переносим в него всё, что
-        # создал create_booking: id, цену, длительность, время создания.
-        for field in created._meta.concrete_fields:
-            setattr(obj, field.attname, getattr(created, field.attname))
+        # записали сервисы: id, цену, длительность, время изменения.
+        for field in saved._meta.concrete_fields:
+            setattr(obj, field.attname, getattr(saved, field.attname))
 
         obj._state.adding = False
-        obj._state.db = created._state.db
+        obj._state.db = saved._state.db
+
+    def _save_changes(self, request, obj, form):
+        """
+        Сохраняет правку существующей записи: сначала перенос, потом данные
+        клиента, потом статус. Всё внутри транзакции страницы: если что-то
+        не прошло, не сохраняется ничего.
+
+        Форма уже изменила obj по полям клиента и статуса, но в базу ничего
+        не записано. Поэтому берём свежую запись из базы и меняем её сами:
+        иначе перенос и смена статуса обошли бы проверки и блокировки.
+        """
+        booking = Booking.objects.get(pk=obj.pk)
+        cleaned = form.cleaned_data
+
+        move = form.get_move()
+        if move:
+            booking = reschedule_booking(
+                booking,
+                actor=request.user,
+                **move,
+            )
+
+        changed_fields = []
+        for field in ("client_name", "client_phone", "comment"):
+            if getattr(booking, field) != cleaned[field]:
+                setattr(booking, field, cleaned[field])
+                changed_fields.append(field)
+
+        if changed_fields:
+            booking.save(update_fields=[*changed_fields, "updated_at"])
+
+        new_status = cleaned["status"]
+        if new_status != booking.status:
+            booking = change_booking_status(
+                booking,
+                new_status,
+                actor=request.user,
+            )
+
+        self._copy_saved_fields(obj, booking)
 
     def add_view(self, request, form_url="", extra_context=None):
         try:
@@ -198,6 +260,24 @@ class BookingAdmin(ModelAdmin):
             )
             return HttpResponseRedirect(request.get_full_path())
 
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        try:
+            return super().change_view(
+                request,
+                object_id,
+                form_url,
+                extra_context,
+            )
+        except (SlotUnavailableError, BookingStateError) as error:
+            # Редкий случай: пока форма была открыта, запись изменил кто-то
+            # другой или время заняли. Страница откатывается целиком.
+            self.message_user(
+                request,
+                f"Изменения не сохранены: {error}",
+                level=messages.ERROR,
+            )
+            return HttpResponseRedirect(request.get_full_path())
+
     # --- Вид списка ------------------------------------------------------
 
     @display(
@@ -208,19 +288,57 @@ class BookingAdmin(ModelAdmin):
     def status_badge(self, obj):
         return obj.get_status_display()
 
+    @display(description="История")
+    def history(self, obj):
+        events = list(obj.events.select_related("actor"))
+
+        if not events:
+            return "—"
+
+        def line(event):
+            moment = timezone.localtime(event.created_at)
+            who = event.actor.get_username() if event.actor else "клиент / система"
+
+            if event.kind == BookingEvent.Kind.STATUS:
+                what = (
+                    f"Статус: {Booking.Status(event.from_status).label} → "
+                    f"{Booking.Status(event.to_status).label}"
+                )
+            elif event.kind == BookingEvent.Kind.CREATED:
+                what = "Запись создана"
+            else:
+                what = f"Изменена: {event.details}"
+
+            return (f"{moment:%d.%m.%Y %H:%M} — {what} ({who})",)
+
+        return format_html_join(
+            mark_safe("<br>"),
+            "{}",
+            (line(event) for event in events),
+        )
+
     # --- Действия над выбранными записями --------------------------------
 
-    def _change_status(self, request, queryset, allowed_from, new_status, done_text):
+    def _change_status(self, request, queryset, new_status, done_text):
         """
-        Меняет статус только у записей, для которых такой переход разумен,
-        и сообщает, сколько записей изменено и сколько пропущено.
+        Меняет статус у выбранных записей через сервис и сообщает, сколько
+        записей изменено и сколько пропущено (для них такой переход не
+        разрешён правилами Booking.ALLOWED_TRANSITIONS).
         """
-        total = queryset.count()
-        updated = queryset.filter(status__in=allowed_from).update(
-            status=new_status,
-            updated_at=timezone.now(),
-        )
-        skipped = total - updated
+        updated = 0
+        skipped = 0
+
+        for booking in queryset:
+            try:
+                change_booking_status(
+                    booking,
+                    new_status,
+                    actor=request.user,
+                )
+            except BookingStateError:
+                skipped += 1
+            else:
+                updated += 1
 
         if updated:
             self.message_user(
@@ -241,7 +359,6 @@ class BookingAdmin(ModelAdmin):
         self._change_status(
             request,
             queryset,
-            (Booking.Status.NEW,),
             Booking.Status.CONFIRMED,
             "Подтверждено записей",
         )
@@ -251,7 +368,6 @@ class BookingAdmin(ModelAdmin):
         self._change_status(
             request,
             queryset,
-            ACTIVE_BOOKING_STATUSES,
             Booking.Status.COMPLETED,
             "Завершено записей",
         )
@@ -261,7 +377,6 @@ class BookingAdmin(ModelAdmin):
         self._change_status(
             request,
             queryset,
-            ACTIVE_BOOKING_STATUSES,
             Booking.Status.NO_SHOW,
             "Отмечено неявок",
         )
@@ -271,7 +386,6 @@ class BookingAdmin(ModelAdmin):
         self._change_status(
             request,
             queryset,
-            ACTIVE_BOOKING_STATUSES,
             Booking.Status.CANCELLED,
             "Отменено записей",
         )

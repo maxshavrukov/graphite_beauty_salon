@@ -1,9 +1,10 @@
 """
-Бизнес-логика каталога, разбитая по смыслу на четыре файла:
+Бизнес-логика каталога, разбитая по смыслу на пять файлов:
 
 - scheduling.py      — расчёт доступных слотов у одного мастера
 - availability.py    — агрегация доступности по всем мастерам услуги
 - booking.py         — создание записи с защитой от гонки
+- booking_changes.py — смена статуса и перенос существующей записи
 - schedule_editor.py — редактор расписания: рабочие дни, отсутствия,
                        «заполнено до», копирование и продление
 
@@ -18,6 +19,13 @@ from .availability import (
     get_available_masters_for_slot,
     get_available_times_for_service,
     get_masters_for_service,
+)
+from .booking_changes import (
+    BookingStateError,
+    can_change_status,
+    change_booking_status,
+    reschedule_booking,
+    validate_reschedule,
 )
 from .booking import (
     SlotUnavailableError,
@@ -52,11 +60,14 @@ from .scheduling import (
 )
 
 __all__ = [
+    "BookingStateError",
     "CalendarDay",
     "CopyResult",
     "ScheduleStatus",
     "SlotUnavailableError",
     "WorkDayChange",
+    "can_change_status",
+    "change_booking_status",
     "copy_work_days",
     "create_absence",
     "create_booking",
@@ -80,6 +91,8 @@ __all__ = [
     "get_working_intervals",
     "intervals_overlap",
     "remove_work_days",
+    "reschedule_booking",
     "set_work_days",
     "validate_booking_slot",
+    "validate_reschedule",
 ]

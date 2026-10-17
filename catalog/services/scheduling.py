@@ -103,16 +103,13 @@ def get_active_bookings(
     """
     Возвращает активные записи мастера на конкретную дату.
 
-    NEW и CONFIRMED блокируют время.
-    CANCELLED и COMPLETED не блокируют.
+    Какие статусы блокируют время, задано в Booking.ACTIVE_STATUSES
+    (сейчас NEW и CONFIRMED); остальные записи время не занимают.
     """
     return Booking.objects.filter(
         master=master,
         date=target_date,
-        status__in=[
-            Booking.Status.NEW,
-            Booking.Status.CONFIRMED,
-        ],
+        status__in=Booking.ACTIVE_STATUSES,
     )
 
 

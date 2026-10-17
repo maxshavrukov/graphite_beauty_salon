@@ -120,7 +120,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'RU-RU'
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'Europe/Kyiv'
 
@@ -158,10 +158,15 @@ BOOKING_MAX_DAYS_AHEAD = 14
 # задним числом занести уже случившийся визит walk-in клиента.
 BOOKING_MIN_LEAD_MINUTES = 60
 
+# За сколько дней до конца расписания мастера админ видит предупреждение
+# «пора продлить расписание».
+SCHEDULE_WARNING_DAYS = 21
+
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
+# Письма пока не отправляются: на время разработки они печатаются в терминал.
+# Для настоящей отправки здесь будет SMTP-бэкенд.
 MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
@@ -200,7 +205,7 @@ UNFOLD = {
                         "link": reverse_lazy("admin:catalog_booking_changelist"),
                     },
                     {
-                        "title": "Мастера и графики",
+                        "title": "Мастера",
                         "icon": "content_cut",
                         "link": reverse_lazy("admin:catalog_master_changelist"),
                     },
