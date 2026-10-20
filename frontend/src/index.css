@@ -6,6 +6,7 @@
   --text: #1f1f23;
   --muted: #6b6b73;
   --accent: #2b2b30;
+  --accent-text: #ffffff;
   --border: #e2e2e6;
   --error: #b3261e;
   --radius: 12px;
@@ -25,8 +26,14 @@ body {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
 }
 
 .page {
@@ -44,12 +51,24 @@ h2 {
   color: var(--muted);
 }
 
+.step__title {
+  font-size: 1.3rem;
+  margin-bottom: 20px;
+}
+
+.step__hint {
+  margin: -12px 0 16px;
+  color: var(--muted);
+}
+
+/* Категории и услуги */
+
 .category {
   margin-bottom: 28px;
 }
 
-.category h2 {
-  font-size: 1.1rem;
+.category h3 {
+  font-size: 1.05rem;
   margin-bottom: 12px;
 }
 
@@ -65,16 +84,86 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
   padding: 14px 16px;
+  text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.service:hover {
+  border-color: var(--accent);
 }
 
 .service span {
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+/* Выбор даты */
+
+.back {
+  margin-bottom: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.dates {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.date:hover {
+  border-color: var(--accent);
+}
+
+.date__weekday {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.date__day {
+  font-weight: 600;
+}
+
+.date--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.date--active .date__weekday {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* Сообщения */
 
 .note {
   padding: 14px 16px;

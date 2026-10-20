@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
+import DateStep from './components/DateStep'
+import ServiceStep from './components/ServiceStep'
 
 export default function App() {
+  // Всё, что клиент уже выбрал, лежит здесь. Следующие шаги записи
+  // (время, мастер, контакты) будут добавлять сюда свои поля.
+  const [service, setService] = useState(null)
+  const [date, setDate] = useState(null)
+
   const [categories, setCategories] = useState([])
   const [status, setStatus] = useState('loading') // loading | ready | error
 
@@ -26,11 +33,21 @@ export default function App() {
     }
   }, [])
 
+  function chooseService(chosen) {
+    setService(chosen)
+    setDate(null) // другая услуга — другие доступные даты
+  }
+
+  function backToServices() {
+    setService(null)
+    setDate(null)
+  }
+
   return (
     <main className="page">
       <header className="page__header">
         <h1>Graphite Beauty Salon</h1>
-        <p>Выберите услугу, чтобы записаться</p>
+        <p>Онлайн-запись</p>
       </header>
 
       {status === 'loading' && <p className="note">Загружаем услуги…</p>}
@@ -49,19 +66,18 @@ export default function App() {
         </p>
       )}
 
-      {categories.map((category) => (
-        <section key={category.slug} className="category">
-          <h2>{category.name}</h2>
-          <ul className="services">
-            {category.services.map((service) => (
-              <li key={service.slug} className="service">
-                <strong>{service.name}</strong>
-                {service.description && <span>{service.description}</span>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {status === 'ready' && !service && (
+        <ServiceStep categories={categories} onSelect={chooseService} />
+      )}
+
+      {status === 'ready' && service && (
+        <DateStep
+          service={service}
+          selectedDate={date}
+          onSelect={setDate}
+          onBack={backToServices}
+        />
+      )}
     </main>
   )
 }
