@@ -7,6 +7,7 @@ change_booking_status и reschedule_booking: они проверяют прав�
 """
 
 from datetime import timedelta
+from typing import Any
 
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
@@ -152,6 +153,11 @@ class BookingAdmin(ModelAdmin):
         "cancel_bookings",
     ]
 
+    def has_delete_permission(self, request, obj=None) -> bool:
+        # Запись и её журнал не удаляем физически: для освобождения времени
+        # используется статус CANCELLED, история остаётся доступной.
+        return False
+
     def get_ordering(self, request):
         # «Ждут звонка»: сначала те, кто оставил заявку раньше всех.
         if request.GET.get("awaiting") == "yes":
@@ -172,6 +178,8 @@ class BookingAdmin(ModelAdmin):
                 ("Клиент", {"fields": ("client_name", "client_phone", "comment")}),
                 ("Дополнительно", {"fields": ("source",)}),
             )
+
+        assert isinstance(obj, Booking)
 
         # Активную запись можно перенести (поля new_*), закрытую только
         # смотреть: мастер, услуга, дата и время показываются текстом.
@@ -216,7 +224,7 @@ class BookingAdmin(ModelAdmin):
             "history",
         ]
 
-        if obj.status not in Booking.ACTIVE_STATUSES:
+        if isinstance(obj, Booking) and obj.status not in Booking.ACTIVE_STATUSES:
             readonly += ["master", "service", "date", "start_time"]
 
         return tuple(readonly)
@@ -259,7 +267,7 @@ class BookingAdmin(ModelAdmin):
         obj._state.adding = False
         obj._state.db = saved._state.db
 
-    def _save_changes(self, request, obj, form):
+    def _save_changes(self, request, obj: Booking, form):
         """
         Сохраняет правку существующей записи: сначала перенос, потом данные
         клиента, потом статус. Всё внутри транзакции страницы: если что-то
@@ -281,13 +289,35 @@ class BookingAdmin(ModelAdmin):
             )
 
         changed_fields = []
+        history_labels = {
+            "client_name": "Имя",
+            "client_phone": "Телефон",
+            "comment": "Комментарий",
+        }
+        history_parts = []
         for field in ("client_name", "client_phone", "comment"):
-            if getattr(booking, field) != cleaned[field]:
-                setattr(booking, field, cleaned[field])
+            old_value = getattr(booking, field)
+            new_value = cleaned[field]
+            if old_value != new_value:
+                setattr(booking, field, new_value)
                 changed_fields.append(field)
+                if field == "comment":
+                    history_parts.append(f"{history_labels[field]} изменён")
+                else:
+                    history_parts.append(
+                        f"{history_labels[field]}: {old_value} → {new_value}"
+                    )
 
         if changed_fields:
             booking.save(update_fields=[*changed_fields, "updated_at"])
+            BookingEvent.objects.create(
+                booking=booking,
+                kind=BookingEvent.Kind.CLIENT_UPDATED,
+                actor=request.user,
+                from_status=booking.status,
+                to_status=booking.status,
+                details="; ".join(history_parts),
+            )
 
         new_status = cleaned["status"]
         if new_status != booking.status:
@@ -337,11 +367,11 @@ class BookingAdmin(ModelAdmin):
         ordering="status",
         label=STATUS_COLORS,
     )
-    def status_badge(self, obj):
+    def status_badge(self, obj: Booking) -> str:
         return obj.get_status_display()
 
     @display(description="Телефон", ordering="client_phone")
-    def phone_link(self, obj):
+    def phone_link(self, obj: Booking) -> str:
         # Ссылка tel: на телефоне или в программе для звонков набирает номер
         # одним нажатием.
         return format_html(
@@ -351,14 +381,14 @@ class BookingAdmin(ModelAdmin):
         )
 
     @display(description="Ждёт", ordering="created_at")
-    def waiting(self, obj):
+    def waiting(self, obj: Booking) -> str:
         if obj.status != Booking.Status.NEW:
             return "—"
 
         return format_waiting(timezone.now() - obj.created_at)
 
     @display(description="История")
-    def history(self, obj):
+    def history(self, obj: Booking) -> str:
         events = list(obj.events.select_related("actor"))
 
         if not events:

@@ -12,7 +12,7 @@
 from datetime import date, time, timedelta
 
 from ..models import Master, MasterService, Service
-from .scheduling import get_available_slots
+from .scheduling import get_available_slots, load_availability_snapshot
 
 
 def get_masters_for_service(service: Service):
@@ -45,11 +45,19 @@ def get_available_dates_for_master(
     заранее, и агрегировать по нескольким мастерам не нужно.
     """
 
+    if date_to < date_from:
+        return []
+
+    snapshot = load_availability_snapshot(
+        [master], date_from, date_to, service=service,
+    )
     available_dates = []
     current = date_from
 
     while current <= date_to:
-        if get_available_slots(master, service, current, slot_step_minutes):
+        if get_available_slots(
+            master, service, current, slot_step_minutes, snapshot=snapshot,
+        ):
             available_dates.append(current)
 
         current += timedelta(days=1)
@@ -72,11 +80,17 @@ def get_available_dates_for_service(
     вызывающего кода (view/настройки), а не этой функции.
     """
 
+    if date_to < date_from:
+        return []
+
     masters = list(get_masters_for_service(service))
 
     if not masters:
         return []
 
+    snapshot = load_availability_snapshot(
+        masters, date_from, date_to, service=service,
+    )
     available_dates = []
     current = date_from
 
@@ -87,6 +101,7 @@ def get_available_dates_for_service(
                 service,
                 current,
                 slot_step_minutes,
+                snapshot=snapshot,
             )
             for master in masters
         )
@@ -114,7 +129,10 @@ def get_available_times_for_service(
     смотреть через get_available_masters_for_slot.
     """
 
-    masters = get_masters_for_service(service)
+    masters = list(get_masters_for_service(service))
+    snapshot = load_availability_snapshot(
+        masters, target_date, target_date, service=service,
+    )
 
     available_times = set()
 
@@ -124,6 +142,7 @@ def get_available_times_for_service(
             service,
             target_date,
             slot_step_minutes,
+            snapshot=snapshot,
         )
         available_times.update(slots)
 
@@ -145,11 +164,17 @@ def get_available_masters_for_slot(
     [{"master": <Master>, "price": Decimal("450.00")}, ...]
     """
 
-    master_services = MasterService.objects.filter(
-        service=service,
-        is_active=True,
-        master__is_active=True,
-    ).select_related("master")
+    master_services = list(
+        MasterService.objects.filter(
+            service=service,
+            is_active=True,
+            master__is_active=True,
+        ).select_related("master")
+    )
+    masters = [item.master for item in master_services]
+    snapshot = load_availability_snapshot(
+        masters, target_date, target_date, service=service,
+    )
 
     available = []
 
@@ -159,6 +184,7 @@ def get_available_masters_for_slot(
             service,
             target_date,
             slot_step_minutes,
+            snapshot=snapshot,
         )
 
         if start_time in slots:

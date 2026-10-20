@@ -7,6 +7,7 @@
 
 from datetime import date, time
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -36,7 +37,8 @@ TUESDAY = date(2026, 9, 8)
 
 
 def make_user(username="staff"):
-    return get_user_model().objects.create_superuser(
+    user_model: Any = get_user_model()
+    return user_model.objects.create_superuser(
         username=username,
         email=f"{username}@example.com",
         password="pass12345",
@@ -60,6 +62,9 @@ class BookingTestCase(TestCase):
         kwargs.setdefault("target_date", MONDAY)
         kwargs.setdefault("duration", 30)
         kwargs.setdefault("price", Decimal("450.00"))
+        # Уже в том виде, в котором номер хранится: иначе форма админки
+        # «нормализует» его и пишет в журнал лишнее событие.
+        kwargs.setdefault("client_phone", "+380000000000")
         return make_booking(start_time=start_time, **kwargs)
 
 
@@ -385,6 +390,22 @@ class RescheduleBookingTests(BookingTestCase):
                 with self.assertRaises(BookingStateError):
                     reschedule_booking(booking, start_time=time(17, 0))
 
+    def test_can_reschedule_existing_pair_after_it_is_deactivated(self):
+        booking = self.book()
+        self.master.is_active = False
+        self.master.save(update_fields=["is_active"])
+        self.master_service.is_active = False
+        self.master_service.save(update_fields=["is_active"])
+        self.service.is_active = False
+        self.service.save(update_fields=["is_active"])
+
+        reschedule_booking(booking, start_time=time(12, 0))
+
+        booking.refresh_from_db()
+        self.assertEqual(booking.start_time, time(12, 0))
+        self.assertEqual(booking.price, Decimal("450.00"))
+        self.assertEqual(booking.duration, 30)
+
     def test_nothing_to_change_writes_no_journal(self):
         booking = self.book()
 
@@ -441,7 +462,8 @@ class BookingChangeFormMoveTests(BookingTestCase):
 
         form = BookingChangeForm(instance=booking)
 
-        values = {value for value, _ in form.fields["status"].choices}
+        status_field: Any = form.fields["status"]
+        values = {value for value, _ in status_field.choices}
         self.assertEqual(
             values,
             {Booking.Status.NEW, Booking.Status.CONFIRMED, Booking.Status.CANCELLED},
@@ -557,6 +579,20 @@ class BookingAdminChangeTests(BookingTestCase):
 
         event = booking.events.get()
         self.assertEqual(event.kind, BookingEvent.Kind.RESCHEDULED)
+        self.assertEqual(event.actor, self.user)
+
+    def test_admin_client_data_changes_are_audited(self):
+        booking = self.book()
+
+        response = self.post_change(booking, client_name="Новое имя")
+
+        self.assertEqual(response.status_code, 302)
+        booking.refresh_from_db()
+        self.assertEqual(booking.client_name, "Новое имя")
+        event = booking.events.get()
+        self.assertEqual(event.kind, BookingEvent.Kind.CLIENT_UPDATED)
+        self.assertIn("Тестовый клиент", event.details)
+        self.assertIn("Новое имя", event.details)
         self.assertEqual(event.actor, self.user)
 
     def test_admin_moves_and_confirms_in_one_save(self):

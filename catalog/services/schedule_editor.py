@@ -22,7 +22,7 @@ ValidationError с понятным текстом, ошибки вызова (�
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Iterable, Optional
 
 from django.conf import settings
@@ -39,6 +39,99 @@ DEFAULT_WARNING_DAYS = 21
 STATE_EMPTY = "empty"      # мастер в этот день не отмечен
 STATE_WORKING = "working"  # рабочий день
 STATE_ABSENT = "absent"    # отпуск, больничный или отгул
+
+
+def _booking_fits_work_day(booking: Booking, work_day: WorkDay | None) -> bool:
+    """Может ли онлайн-запись целиком уместиться в предложенном WorkDay."""
+    if work_day is None:
+        return False
+
+    start = datetime.combine(booking.date, booking.start_time)
+    end = start + timedelta(minutes=booking.duration)
+    return any(
+        start >= datetime.combine(booking.date, interval_start)
+        and end <= datetime.combine(booking.date, interval_end)
+        for interval_start, interval_end in work_day.get_intervals()
+    )
+
+
+def _ensure_online_bookings_fit_work_days(
+    master: Master,
+    proposed_days: dict[date, WorkDay | None],
+) -> None:
+    """
+    Не разрешает изменению/удалению WorkDay сделать онлайн-записи
+    несовместимыми с расписанием. PHONE/ADMIN могут быть вне графика по
+    бизнес-правилу проекта и намеренно здесь не блокируют операцию.
+    """
+    if not proposed_days:
+        return
+
+    existing_days = {
+        work_day.date: work_day
+        for work_day in WorkDay.objects.filter(
+            master=master,
+            date__in=proposed_days,
+        )
+    }
+    bookings = Booking.objects.filter(
+        master=master,
+        date__in=proposed_days,
+        source=Booking.Source.ONLINE,
+        status__in=Booking.ACTIVE_STATUSES,
+    ).order_by("date", "start_time")
+
+    # Защищаем от изменений, которые ломают ранее корректное расписание.
+    # Если запись уже была вручную поставлена вне рабочего времени, само по
+    # себе такое исключение не мешает добавить/подправить график.
+    conflicts = []
+    for booking in bookings:
+        old_day = existing_days.get(booking.date)
+        proposed_day = proposed_days[booking.date]
+        was_supported = _booking_fits_work_day(booking, old_day)
+        remains_supported = _booking_fits_work_day(booking, proposed_day)
+        if was_supported and not remains_supported:
+            conflicts.append(booking)
+
+    if conflicts:
+        labels = ", ".join(
+            f"#{booking.pk} ({booking.date:%d.%m.%Y} "
+            f"{booking.start_time:%H:%M}, {booking.client_name})"
+            for booking in conflicts[:5]
+        )
+        suffix = " …" if len(conflicts) > 5 else ""
+        raise ValidationError(
+            "Изменение расписания конфликтует с онлайн-записями: "
+            f"{labels}{suffix}. Сначала перенесите или отмените эти записи."
+        )
+
+
+def _ensure_no_active_bookings_in_range(
+    master: Master,
+    start_date: date,
+    end_date: date,
+) -> None:
+    """Отсутствие/блокировка не могут перекрыть активную запись."""
+    bookings = list(
+        Booking.objects.filter(
+            master=master,
+            date__range=(start_date, end_date),
+            status__in=Booking.ACTIVE_STATUSES,
+        ).order_by("date", "start_time")[:6]
+    )
+    if not bookings:
+        return
+
+    labels = ", ".join(
+        f"#{booking.pk} ({booking.date:%d.%m.%Y} "
+        f"{booking.start_time:%H:%M}, {booking.client_name})"
+        for booking in bookings[:5]
+    )
+    suffix = " …" if len(bookings) > 5 else ""
+    raise ValidationError(
+        "Операция конфликтует с активными записями: "
+        f"{labels}{suffix}. Сначала перенесите или отмените эти записи."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,32 +233,37 @@ def set_work_days(
     _check_day_times(start_time, end_time, break_start, break_end)
 
     with transaction.atomic():
+        # create_booking захватывает блокировку мастера перед проверкой слота.
+        # Редактор расписания использует тот же порядок, чтобы изменения графика
+        # не пересекались с созданием новой онлайн-записи.
+        locked_master = Master.objects.select_for_update().get(pk=master.pk)
         existing = {
             work_day.date: work_day
             for work_day in WorkDay.objects.filter(
-                master=master,
+                master=locked_master,
                 date__in=unique_dates,
             )
         }
 
         to_create: list[WorkDay] = []
         to_update: list[WorkDay] = []
+        proposals: dict[date, WorkDay | None] = {}
         unchanged = 0
 
         for day in unique_dates:
             current = existing.get(day)
 
             if current is None:
-                to_create.append(
-                    WorkDay(
-                        master=master,
-                        date=day,
-                        start_time=start_time,
-                        end_time=end_time,
-                        break_start=break_start,
-                        break_end=break_end,
-                    )
+                proposed = WorkDay(
+                    master=locked_master,
+                    date=day,
+                    start_time=start_time,
+                    end_time=end_time,
+                    break_start=break_start,
+                    break_end=break_end,
                 )
+                to_create.append(proposed)
+                proposals[day] = proposed
                 continue
 
             same = (
@@ -184,7 +282,9 @@ def set_work_days(
             current.break_start = break_start
             current.break_end = break_end
             to_update.append(current)
+            proposals[day] = current
 
+        _ensure_online_bookings_fit_work_days(locked_master, proposals)
         WorkDay.objects.bulk_create(to_create)
 
         if to_update:
@@ -207,10 +307,22 @@ def remove_work_days(master: Master, dates: Iterable[date]) -> int:
     if not unique_dates:
         return 0
 
-    deleted, _ = WorkDay.objects.filter(
-        master=master,
-        date__in=unique_dates,
-    ).delete()
+    with transaction.atomic():
+        locked_master = Master.objects.select_for_update().get(pk=master.pk)
+        existing_dates = set(
+            WorkDay.objects.filter(
+                master=locked_master,
+                date__in=unique_dates,
+            ).values_list("date", flat=True)
+        )
+        _ensure_online_bookings_fit_work_days(
+            locked_master,
+            {day: None for day in existing_dates},
+        )
+        deleted, _ = WorkDay.objects.filter(
+            master=locked_master,
+            date__in=unique_dates,
+        ).delete()
 
     return deleted
 
@@ -232,15 +344,18 @@ def create_absence(
     Рабочие дни в этот период не удаляются. Пересечение с другим
     отсутствием того же мастера — ValidationError.
     """
-    absence = Absence(
-        master=master,
-        kind=kind,
-        start_date=start_date,
-        end_date=end_date,
-        comment=comment,
-    )
-    absence.full_clean()
-    absence.save()
+    with transaction.atomic():
+        locked_master = Master.objects.select_for_update().get(pk=master.pk)
+        _ensure_no_active_bookings_in_range(locked_master, start_date, end_date)
+        absence = Absence(
+            master=locked_master,
+            kind=kind,
+            start_date=start_date,
+            end_date=end_date,
+            comment=comment,
+        )
+        absence.full_clean()
+        absence.save()
 
     return absence
 
@@ -311,12 +426,17 @@ def get_schedule_status(
         today = timezone.localdate()
 
     if warning_days is None:
-        warning_days = getattr(settings, "SCHEDULE_WARNING_DAYS", DEFAULT_WARNING_DAYS)
+        raw_warning = getattr(settings, "SCHEDULE_WARNING_DAYS", None)
+        warning_days = int(raw_warning) if raw_warning is not None else DEFAULT_WARNING_DAYS
+    else:
+        warning_days = int(warning_days)
 
     filled_until = get_filled_until(master)
 
     if filled_until is None:
         return ScheduleStatus(filled_until=None, days_left=0, is_low=True)
+
+    assert filled_until is not None
 
     days_left = max(0, (filled_until - today).days)
 
@@ -355,24 +475,25 @@ def copy_work_days(
 
     shift = timedelta(days=7 * shift_weeks)
 
-    sources = list(
-        WorkDay.objects.filter(
-            master=master,
-            date__range=(source_start, source_end),
-        )
-    )
-
     with transaction.atomic():
+        locked_master = Master.objects.select_for_update().get(pk=master.pk)
+        sources = list(
+            WorkDay.objects.filter(
+                master=locked_master,
+                date__range=(source_start, source_end),
+            )
+        )
         existing = {
             work_day.date: work_day
             for work_day in WorkDay.objects.filter(
-                master=master,
+                master=locked_master,
                 date__in=[source.date + shift for source in sources],
             )
         }
 
         to_create: list[WorkDay] = []
         to_update: list[WorkDay] = []
+        proposals: dict[date, WorkDay | None] = {}
         skipped = 0
 
         for source in sources:
@@ -382,7 +503,7 @@ def copy_work_days(
             if current is None:
                 to_create.append(
                     WorkDay(
-                        master=master,
+                        master=locked_master,
                         date=target_date,
                         start_time=source.start_time,
                         end_time=source.end_time,
@@ -390,15 +511,18 @@ def copy_work_days(
                         break_end=source.break_end,
                     )
                 )
+                proposals[target_date] = to_create[-1]
             elif overwrite:
                 current.start_time = source.start_time
                 current.end_time = source.end_time
                 current.break_start = source.break_start
                 current.break_end = source.break_end
                 to_update.append(current)
+                proposals[target_date] = current
             else:
                 skipped += 1
 
+        _ensure_online_bookings_fit_work_days(locked_master, proposals)
         WorkDay.objects.bulk_create(to_create)
 
         if to_update:

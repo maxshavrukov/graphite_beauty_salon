@@ -2,9 +2,11 @@ from datetime import date, time
 
 from django.test import TestCase
 
-from catalog.models import TimeBlock
+from django.core.exceptions import ValidationError
+
+from catalog.models import Booking, TimeBlock
 from catalog.services import filter_candidates_by_time_blocks
-from catalog.tests.factories import make_master
+from catalog.tests.factories import make_booking, make_master, make_service
 
 
 class FilterCandidatesByTimeBlocksTests(TestCase):
@@ -79,3 +81,23 @@ class FilterCandidatesByTimeBlocksTests(TestCase):
         )
 
         self.assertEqual(result, [time(11, 0)])
+
+    def test_model_validation_rejects_block_over_active_booking(self):
+        service = make_service()
+        make_booking(
+            master=self.master,
+            service=service,
+            target_date=self.date,
+            start_time=time(10, 0),
+            duration=60,
+            status=Booking.Status.CONFIRMED,
+        )
+        block = TimeBlock(
+            master=self.master,
+            date=self.date,
+            start_time=time(10, 30),
+            end_time=time(11, 0),
+        )
+
+        with self.assertRaises(ValidationError):
+            block.full_clean()

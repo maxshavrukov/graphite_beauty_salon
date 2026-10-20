@@ -132,6 +132,23 @@ class SetWorkDaysTests(TestCase):
         with self.assertRaises(ValidationError):
             set_work_days(self.master, [MONDAY], None, time(18, 0))
 
+    def test_refuses_to_shorten_hours_over_online_booking(self):
+        make_work_day(self.master, MONDAY, time(9, 0), time(18, 0))
+        service = make_service()
+        make_booking(
+            master=self.master,
+            service=service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
+            duration=60,
+            source=Booking.Source.ONLINE,
+        )
+
+        with self.assertRaises(ValidationError):
+            set_work_days(self.master, [MONDAY], time(10, 0), time(18, 0))
+
+        self.assertEqual(stored(self.master)[MONDAY][:2], (time(9, 0), time(18, 0)))
+
     def test_rejects_empty_date_list(self):
         with self.assertRaises(ValueError):
             set_work_days(self.master, [], time(9, 0), time(18, 0))
@@ -184,6 +201,22 @@ class RemoveWorkDaysTests(TestCase):
 
         self.assertEqual(WorkDay.objects.filter(master=other).count(), 1)
 
+    def test_refuses_to_remove_day_used_by_online_booking(self):
+        service = make_service()
+        make_booking(
+            master=self.master,
+            service=service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
+            duration=30,
+            source=Booking.Source.ONLINE,
+        )
+
+        with self.assertRaises(ValidationError):
+            remove_work_days(self.master, [MONDAY])
+
+        self.assertEqual(WorkDay.objects.filter(master=self.master, date=MONDAY).count(), 1)
+
 
 # ---------------------------------------------------------------------------
 # create_absence
@@ -232,6 +265,23 @@ class CreateAbsenceTests(TestCase):
         create_absence(self.master, Absence.Kind.VACATION, MONDAY, MONDAY)
 
         self.assertEqual(WorkDay.objects.filter(master=self.master).count(), 1)
+
+    def test_refuses_absence_when_active_booking_exists(self):
+        service = make_service()
+        make_work_day(self.master, MONDAY)
+        make_booking(
+            master=self.master,
+            service=service,
+            target_date=MONDAY,
+            start_time=time(10, 0),
+            duration=30,
+            status=Booking.Status.CONFIRMED,
+        )
+
+        with self.assertRaises(ValidationError):
+            create_absence(self.master, Absence.Kind.SICK, MONDAY, MONDAY)
+
+        self.assertEqual(Absence.objects.count(), 0)
 
 
 # ---------------------------------------------------------------------------

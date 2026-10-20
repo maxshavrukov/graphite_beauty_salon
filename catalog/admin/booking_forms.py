@@ -5,6 +5,7 @@
 а перед этим форма проверяет время теми же правилами, что и сайт.
 """
 
+from typing import Any
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -22,7 +23,7 @@ from ..services import (
 from .widgets import time_field
 
 
-def clean_phone(value):
+def clean_phone(value: str) -> str:
     """Номер клиента в едином формате или ошибка поля формы."""
     try:
         return normalize_ua_phone(value)
@@ -73,7 +74,7 @@ class BookingCreateForm(forms.ModelForm):
             "comment": "Комментарий",
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         # Записать можно только к работающему мастеру на действующую услугу.
@@ -87,11 +88,12 @@ class BookingCreateForm(forms.ModelForm):
 
         self.fields["date"].initial = timezone.localdate()
 
-    def clean_client_phone(self):
-        return clean_phone(self.cleaned_data["client_phone"])
+    def clean_client_phone(self) -> str:
+        phone = self.cleaned_data.get("client_phone", "")
+        return clean_phone(phone)
 
-    def clean(self):
-        cleaned_data = super().clean()
+    def clean(self) -> dict[str, Any]:
+        cleaned_data = super().clean() or {}
 
         master = cleaned_data.get("master")
         service = cleaned_data.get("service")
@@ -163,7 +165,7 @@ class BookingChangeForm(forms.ModelForm):
             "comment": "Комментарий",
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         booking = self.instance
@@ -203,20 +205,21 @@ class BookingChangeForm(forms.ModelForm):
         self.fields["new_date"].initial = booking.date
         self.fields["new_start_time"].initial = booking.start_time
 
-    def clean_client_phone(self):
-        return clean_phone(self.cleaned_data["client_phone"])
+    def clean_client_phone(self) -> str:
+        phone = self.cleaned_data.get("client_phone", "")
+        return clean_phone(phone)
 
-    def clean_status(self):
-        new_status = self.cleaned_data["status"]
-        old_status = self.initial.get("status")
+    def clean_status(self) -> str:
+        new_status = self.cleaned_data.get("status")
+        initial_status = self.initial.get("status") if self.initial else None
 
-        if new_status == old_status:
-            return new_status
+        if new_status == initial_status:
+            return str(new_status or "")
 
         # Отменённую запись нельзя «оживить»: за это время уже мог
         # записаться другой клиент, а проверок при смене статуса нет.
         if (
-            old_status not in Booking.ACTIVE_STATUSES
+            initial_status not in Booking.ACTIVE_STATUSES
             and new_status in Booking.ACTIVE_STATUSES
         ):
             raise ValidationError(
@@ -224,12 +227,12 @@ class BookingChangeForm(forms.ModelForm):
                 "занять. Создайте новую запись."
             )
 
-        if not can_change_status(old_status, new_status):
+        if initial_status and new_status and not can_change_status(initial_status, new_status):
             raise ValidationError("Такая смена статуса не разрешена.")
 
-        return new_status
+        return str(new_status or "")
 
-    def get_move(self):
+    def get_move(self) -> dict[str, Any]:
         """
         Что админ изменил в мастере, услуге, дате и времени.
 
@@ -243,7 +246,7 @@ class BookingChangeForm(forms.ModelForm):
             return {}
 
         booking = self.instance
-        move = {}
+        move: dict[str, Any] = {}
 
         master = cleaned.get("new_master")
         if master and master.pk != booking.master_id:
@@ -263,8 +266,8 @@ class BookingChangeForm(forms.ModelForm):
 
         return move
 
-    def clean(self):
-        cleaned_data = super().clean()
+    def clean(self) -> dict[str, Any]:
+        cleaned_data = super().clean() or {}
 
         move = self.get_move()
 

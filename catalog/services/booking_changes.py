@@ -26,11 +26,19 @@ class BookingStateError(Exception):
 
 def can_change_status(old_status: str, new_status: str) -> bool:
     """Можно ли перевести запись из old_status в new_status."""
-    return new_status in Booking.ALLOWED_TRANSITIONS.get(old_status, ())
+    try:
+        status_key = Booking.Status(old_status)
+    except ValueError:
+        return False
+    return new_status in Booking.ALLOWED_TRANSITIONS.get(status_key, ())
 
 
 def _status_label(status: str) -> str:
-    return str(Booking.Status(status).label)
+    # Безопасное получение текстовой метки статуса для Pylance и Django
+    for choice, label in Booking.Status.choices:
+        if choice == status:
+            return str(label)
+    return str(status)
 
 
 def _booking_pk(booking: Booking | int) -> int:
@@ -92,15 +100,14 @@ def validate_reschedule(
     """
     Проверяет, можно ли поставить запись на новое место. Ничего не меняет.
 
-    Правила те же, что у админской записи: можно вне рабочих дней мастера
-    (решает администратор), но нельзя на отпуск и больничный, на
-    блокировку времени и поверх чужой записи. Сама переносимая запись
-    себе не мешает.
-
-    Если мастер и услуга те же, длительность берётся из самой записи,
-    а не из текущего прайса: клиенту обещали именно её.
+    Администратор может поставить запись вне обычных рабочих дней, но не
+    на отсутствие, блокировку времени или поверх другой активной записи.
+    Саму переносимую запись исключаем из проверки. Если мастер и услуга не
+    меняются, сохраняем возможность переноса даже после деактивации этой
+    пары: уже обещанную клиенту запись нельзя сделать непереносимой только
+    из-за изменения каталога.
     """
-    keeps_price_list = (
+    same_pair = (
         master.pk == booking.master_id and service.pk == booking.service_id
     )
 
@@ -111,7 +118,8 @@ def validate_reschedule(
         start_time,
         Booking.Source.ADMIN,
         exclude_booking_id=booking.pk,
-        duration_minutes=booking.duration if keeps_price_list else None,
+        duration_minutes=booking.duration if same_pair else None,
+        allow_inactive_existing_pair=same_pair,
     )
 
 
@@ -147,25 +155,21 @@ def reschedule_booking(
     note: str = "",
 ) -> Booking:
     """
-    Переносит или изменяет запись: мастера, услугу, дату, время.
-    Не переданное остаётся как было.
+    Переносит или изменяет существующую запись, не меняя её статус.
 
-    Статус не меняется. Подтверждённая запись после переноса остаётся
-    подтверждённой, потому что админ договорился с клиентом по телефону.
-    Новая запись остаётся новой, и админ подтверждает её отдельно.
-
-    Цена и длительность остаются прежними, пока мастер и услуга те же.
-    Если их сменили, берутся из прайса нового мастера.
-
-    Работает под блокировкой записи и нового мастера (так же, как
-    create_booking), так что гонка с онлайн-записью исключена. Если
-    нового времени нет, бросает SlotUnavailableError, ничего не меняя.
-    Закрытую запись изменить нельзя: BookingStateError.
+    Запись блокируется отдельно от связанных таблиц, затем блокировки
+    мастеров (старого и нового) захватываются строго по возрастанию pk.
+    Это даёт единый порядок блокировок для встречных переносов A→B и B→A.
+    Проверка слота и запись события выполняются в одной транзакции.
     """
     with transaction.atomic():
-        locked = Booking.objects.select_for_update().select_related(
-            "master", "service",
-        ).get(pk=_booking_pk(booking))
+        # Важно ограничить блокировку самой записью. Без of=("self",)
+        # PostgreSQL может заблокировать строки из select_related, что вместе
+        # с блокировкой целевого мастера создаёт риск deadlock.
+        locked = (
+            Booking.objects.select_for_update(of=("self",))
+            .get(pk=_booking_pk(booking))
+        )
 
         if locked.status not in Booking.ACTIVE_STATUSES:
             raise BookingStateError(
@@ -173,32 +177,51 @@ def reschedule_booking(
                 "не редактируется. Создайте новую запись.",
             )
 
-        new_values = {
-            "master": master or locked.master,
-            "service": service or locked.service,
-            "date": target_date or locked.date,
-            "start_time": start_time or locked.start_time,
-        }
+        new_master_id = master.pk if master is not None else locked.master_id
+        new_service_id = service.pk if service is not None else locked.service_id
+        new_date = target_date if target_date is not None else locked.date
+        new_start_time = start_time if start_time is not None else locked.start_time
 
         if (
-            new_values["master"].pk == locked.master_id
-            and new_values["service"].pk == locked.service_id
-            and new_values["date"] == locked.date
-            and new_values["start_time"] == locked.start_time
+            new_master_id == locked.master_id
+            and new_service_id == locked.service_id
+            and new_date == locked.date
+            and new_start_time == locked.start_time
         ):
             return locked
 
-        # Блокируем нового мастера: ровно то, что делает create_booking.
-        locked_master = Master.objects.select_for_update().get(
-            pk=new_values["master"].pk,
-        )
+        # Все мастера, участвующие в переносе, блокируются в одном порядке.
+        # При двух одновременных встречных переносах это не позволяет одной
+        # транзакции взять A→B, а другой — B→A в противоположном порядке.
+        master_ids = sorted({locked.master_id, new_master_id})
+        locked_masters = {}
+        for master_id in master_ids:
+            locked_masters[master_id] = Master.objects.select_for_update().get(
+                pk=master_id,
+            )
+
+        old_master = locked_masters[locked.master_id]
+        new_master = locked_masters[new_master_id]
+        new_service = Service.objects.get(pk=new_service_id)
+
+        # Загружаем связанные объекты после блокировок и сохраняем их в кэше
+        # связи, чтобы история изменений не делала лишние lazy queries.
+        locked.master = old_master
+        locked.service = Service.objects.get(pk=locked.service_id)
+
+        new_values = {
+            "master": new_master,
+            "service": new_service,
+            "date": new_date,
+            "start_time": new_start_time,
+        }
 
         master_service = validate_reschedule(
             locked,
-            master=locked_master,
-            service=new_values["service"],
-            target_date=new_values["date"],
-            start_time=new_values["start_time"],
+            master=new_master,
+            service=new_service,
+            target_date=new_date,
+            start_time=new_start_time,
         )
 
         details = _describe_changes(locked, new_values)
@@ -206,14 +229,14 @@ def reschedule_booking(
             details = f"{details}. {note}" if details else note
 
         keeps_price_list = (
-            locked_master.pk == locked.master_id
-            and new_values["service"].pk == locked.service_id
+            new_master.pk == locked.master_id
+            and new_service.pk == locked.service_id
         )
 
-        locked.master = locked_master
-        locked.service = new_values["service"]
-        locked.date = new_values["date"]
-        locked.start_time = new_values["start_time"]
+        locked.master = new_master
+        locked.service = new_service
+        locked.date = new_date
+        locked.start_time = new_start_time
 
         if not keeps_price_list:
             locked.price = master_service.price

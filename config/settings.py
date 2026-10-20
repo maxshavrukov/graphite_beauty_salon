@@ -164,7 +164,7 @@ SCHEDULE_WARNING_DAYS = 21
 
 
 # Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
+# https://docs.djangoproject.com/en/6.1/topics/email/
 # Письма пока не отправляются: на время разработки они печатаются в терминал.
 # Для настоящей отправки здесь будет SMTP-бэкенд.
 MAILERS = {

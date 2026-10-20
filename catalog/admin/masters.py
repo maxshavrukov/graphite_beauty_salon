@@ -2,6 +2,7 @@
 
 from django import forms
 from django.contrib import admin
+from django.db import transaction
 from unfold.admin import ModelAdmin, TabularInline
 
 from ..models import Absence, Master, MasterService, TimeBlock
@@ -77,6 +78,27 @@ class MasterAdmin(ModelAdmin):
         AbsenceInline,
         TimeBlockInline,
     ]
+
+    def save_formset(self, request, form, formset, change):
+        # Booking creation locks the master before validating its schedule.
+        # Lock the same master and repeat model validation immediately before
+        # saving Absence/TimeBlock rows, so a booking created during form
+        # validation cannot silently overlap a new absence/block.
+        if formset.model not in (Absence, TimeBlock):
+            return super().save_formset(request, form, formset, change)
+
+        with transaction.atomic():
+            Master.objects.select_for_update().get(pk=form.instance.pk)
+            instances = formset.save(commit=False)
+
+            for deleted_object in formset.deleted_objects:
+                deleted_object.delete()
+
+            for instance in instances:
+                instance.full_clean()
+                instance.save()
+
+            formset.save_m2m()
 
 
 @admin.register(MasterService)

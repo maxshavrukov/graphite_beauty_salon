@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -40,6 +41,7 @@ class Service(models.Model):
     if TYPE_CHECKING:
         master_services: Any
         bookings: Any
+        category_id: int
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -94,11 +96,23 @@ class MasterService(models.Model):
     )
     is_active = models.BooleanField(default=True)
 
+    if TYPE_CHECKING:
+        master_id: int
+        service_id: int
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["master", "service"],
                 name="unique_master_service",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(price__gte=0),
+                name="master_service_price_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(duration__gt=0),
+                name="master_service_duration_positive",
             ),
         ]
         verbose_name = "Услуга мастера"
@@ -119,15 +133,62 @@ class TimeBlock(models.Model):
     end_time = models.TimeField()
     reason = models.CharField(max_length=255, blank=True)
 
+    if TYPE_CHECKING:
+        master_id: int | None
+
     class Meta:
         ordering = ["date", "start_time"]
         verbose_name = "Блокировка времени"
         verbose_name_plural = "Блокировки времени"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(start_time__lt=models.F("end_time")),
+                name="time_block_start_before_end",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["master", "date", "start_time"],
+                name="timeblock_master_date_idx",
+            ),
+        ]
 
     def clean(self):
+        super().clean()
+        if self.start_time is None or self.end_time is None:
+            return
+
         if self.start_time >= self.end_time:
             raise ValidationError(
                 "Время окончания должно быть позже времени начала."
+            )
+
+        if self.master_id is None or self.date is None:
+            return
+
+        block_start = datetime.combine(self.date, self.start_time)
+        block_end = datetime.combine(self.date, self.end_time)
+        conflicts = []
+        bookings = Booking.objects.filter(
+            master_id=self.master_id,
+            date=self.date,
+            status__in=Booking.ACTIVE_STATUSES,
+        ).only("id", "start_time", "duration", "client_name")
+        for booking in bookings:
+            booking_start = datetime.combine(self.date, booking.start_time)
+            booking_end = booking_start + timedelta(minutes=booking.duration)
+            if booking_start < block_end and booking_end > block_start:
+                conflicts.append(booking)
+
+        if conflicts:
+            labels = ", ".join(
+                f"#{item.pk} ({item.start_time:%H:%M}, {item.client_name})"
+                for item in conflicts[:5]
+            )
+            suffix = " …" if len(conflicts) > 5 else ""
+            raise ValidationError(
+                "Блокировка пересекается с активными записями: "
+                f"{labels}{suffix}. Сначала перенесите или отмените эти записи."
             )
 
     def __str__(self):
@@ -219,11 +280,38 @@ class Booking(models.Model):
 
     if TYPE_CHECKING:
         events: Any
+        master_id: int
+        service_id: int
+
+        # Django создаёт этот метод в рантайме из choices у status; подсказка
+        # нужна только редактору (Pylance). Она обязана стоять внутри
+        # TYPE_CHECKING: иначе настоящий метод заменится пустым и вернёт None.
+        def get_status_display(self) -> str: ...
 
     class Meta:
         ordering = ["date", "start_time"]
         verbose_name = "Запись"
         verbose_name_plural = "Записи"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(price__gte=0),
+                name="booking_price_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(duration__gt=0),
+                name="booking_duration_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["master", "date", "status"],
+                name="booking_master_date_status_idx",
+            ),
+            models.Index(
+                fields=["master", "date", "start_time"],
+                name="booking_master_date_time_idx",
+            ),
+        ]
 
     def __str__(self):
         return (
@@ -243,7 +331,8 @@ class BookingEvent(models.Model):
     class Kind(models.TextChoices):
         CREATED = "CREATED", "Создана"
         STATUS = "STATUS", "Смена статуса"
-        RESCHEDULED = "RESCHEDULED", "Изменение записи"
+        RESCHEDULED = "RESCHEDULED", "Перенос / изменение записи"
+        CLIENT_UPDATED = "CLIENT_UPDATED", "Изменение данных клиента"
 
     booking = models.ForeignKey(
         Booking,
@@ -263,6 +352,10 @@ class BookingEvent(models.Model):
     to_status = models.CharField(max_length=20, blank=True)
     details = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    if TYPE_CHECKING:
+        booking_id: int
+        actor_id: int | None
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -374,6 +467,76 @@ class WorkDay(models.Model):
                     "Перерыв должен быть внутри рабочего времени."
                 )
 
+        # Если WorkDay переносится на другую дату/мастера, проверяем, не
+        # потеряет ли исходная дата поддержку для онлайн-записей, которые
+        # действительно помещались в исходный график.
+        original = None
+        if self.pk is not None:
+            original = WorkDay.objects.filter(pk=self.pk).first()
+
+        def fits_intervals(booking, intervals, target_date):
+            start = datetime.combine(target_date, booking.start_time)
+            end = start + timedelta(minutes=booking.duration)
+            return any(
+                start >= datetime.combine(target_date, interval_start)
+                and end <= datetime.combine(target_date, interval_end)
+                for interval_start, interval_end in intervals
+            )
+
+        if original is not None and (
+            original.master_id != self.master_id or original.date != self.date
+        ):
+            old_bookings = Booking.objects.filter(
+                master_id=original.master_id,
+                date=original.date,
+                source=Booking.Source.ONLINE,
+                status__in=Booking.ACTIVE_STATUSES,
+            )
+            if any(
+                fits_intervals(item, original.get_intervals(), original.date)
+                for item in old_bookings
+            ):
+                raise ValidationError(
+                    "Нельзя перенести рабочий день: на исходную дату есть "
+                    "онлайн-запись, которая использует этот график. "
+                    "Сначала перенесите или отмените запись."
+                )
+
+        # При изменении времени блокируем только ухудшение относительно
+        # исходного графика. Уже существующая ручная запись вне расписания —
+        # допустимое исключение проекта, и она не должна запрещать безвредную
+        # правку рабочего дня.
+        if (
+            original is not None
+            and original.master_id == self.master_id
+            and original.date == self.date
+            and self.master_id is not None
+            and self.date is not None
+        ):
+            proposed_intervals = self.get_intervals()
+            old_intervals = original.get_intervals()
+            bookings = Booking.objects.filter(
+                master_id=self.master_id,
+                date=self.date,
+                source=Booking.Source.ONLINE,
+                status__in=Booking.ACTIVE_STATUSES,
+            )
+            conflicts = [
+                item for item in bookings
+                if fits_intervals(item, old_intervals, self.date)
+                and not fits_intervals(item, proposed_intervals, self.date)
+            ]
+            if conflicts:
+                labels = ", ".join(
+                    f"#{item.pk} ({item.start_time:%H:%M}, {item.client_name})"
+                    for item in conflicts[:5]
+                )
+                suffix = " …" if len(conflicts) > 5 else ""
+                raise ValidationError(
+                    "Изменение рабочего времени конфликтует с онлайн-записями: "
+                    f"{labels}{suffix}. Сначала перенесите или отмените эти записи."
+                )
+
 
 class Absence(models.Model):
     """
@@ -443,6 +606,27 @@ class Absence(models.Model):
         # по несохранённому объекту — ошибка.
         if self.master_id is None:
             return
+
+        booking_conflicts = Booking.objects.filter(
+            master_id=self.master_id,
+            date__range=(self.start_date, self.end_date),
+            status__in=Booking.ACTIVE_STATUSES,
+        ).order_by("date", "start_time")
+        if booking_conflicts.exists():
+            examples = list(
+                booking_conflicts.values_list(
+                    "date", "start_time", "client_name", "id",
+                )[:5]
+            )
+            labels = ", ".join(
+                f"#{booking_id} ({booking_date:%d.%m.%Y} {booking_time:%H:%M}, {name})"
+                for booking_date, booking_time, name, booking_id in examples
+            )
+            suffix = " …" if booking_conflicts.count() > 5 else ""
+            raise ValidationError(
+                "Нельзя оформить отсутствие: в этот период есть активные "
+                f"записи: {labels}{suffix}. Сначала перенесите или отмените их."
+            )
 
         overlapping = Absence.objects.filter(
             master=self.master,

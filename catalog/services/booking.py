@@ -63,6 +63,7 @@ def validate_booking_slot(
     *,
     exclude_booking_id: int | None = None,
     duration_minutes: int | None = None,
+    allow_inactive_existing_pair: bool = False,
 ) -> MasterService:
     """
     Проверяет, можно ли создать такую запись. Ничего не создаёт.
@@ -89,7 +90,10 @@ def validate_booking_slot(
         - exclude_booking_id — эта запись не считается занятым временем,
           иначе при переносе она мешала бы сама себе;
         - duration_minutes — проверять по длительности самой записи
-          (она сохранена при создании), а не по текущему прайсу мастера.
+          (она сохранена при создании), а не по текущему прайсу мастера;
+        - allow_inactive_existing_pair — разрешает перенос той же самой
+          пары master/service, даже если позже её отключили в каталоге.
+          Для создания новых записей этот флаг никогда не используется.
 
     create_booking вызывает эту функцию внутри транзакции, когда мастер
     уже заблокирован, — тогда проверка надёжна. Вызов из формы админки
@@ -110,9 +114,14 @@ def validate_booking_slot(
             "для онлайн-записи.",
         )
 
-    if not master.is_active:
+    if not master.is_active and not allow_inactive_existing_pair:
         raise SlotUnavailableError(
             "Мастер больше не принимает клиентов.",
+        )
+
+    if not service.is_active and not allow_inactive_existing_pair:
+        raise SlotUnavailableError(
+            "Услуга больше недоступна для новых записей.",
         )
 
     try:
@@ -121,9 +130,20 @@ def validate_booking_slot(
             is_active=True,
         )
     except MasterService.DoesNotExist:
-        raise SlotUnavailableError(
-            "Мастер не оказывает данную услугу.",
-        )
+        # При переносе той же уже существующей пары master/service запись
+        # остаётся действительной даже если мастер позже отключил услугу.
+        # Для новой пары этот обход запрещён: она должна быть активной.
+        if allow_inactive_existing_pair:
+            try:
+                master_service = master.master_services.get(service=service)
+            except MasterService.DoesNotExist:
+                raise SlotUnavailableError(
+                    "Связь мастера с услугой больше не существует.",
+                )
+        else:
+            raise SlotUnavailableError(
+                "Мастер не оказывает данную услугу.",
+            )
 
     # Отсутствие (отпуск, больничный, отгул) нельзя обойти даже
     # административной записью. Неотмеченный день — другое дело:

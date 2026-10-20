@@ -196,3 +196,24 @@ class AvailabilityQueryCountTests(TestCase):
         )
 
         self.assertIsInstance(masters, list)
+
+    def test_service_calendar_query_count_is_bounded(self):
+        for _ in range(5):
+            make_working_master(
+                self.service, MON_TO_SAT, self.date_from, self.date_to,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            result = get_available_dates_for_service(
+                self.service, self.date_from, self.date_to,
+            )
+
+        self.assertTrue(result)
+        # Ожидаем запрос на список мастеров и несколько bulk-запросов для
+        # master services, WorkDay, Absence, TimeBlock и Booking. Число
+        # запросов не должно расти пропорционально мастерам × дням.
+        self.assertLessEqual(
+            len(context),
+            7,
+            f"Availability неожиданно сделал {len(context)} SQL-запросов",
+        )

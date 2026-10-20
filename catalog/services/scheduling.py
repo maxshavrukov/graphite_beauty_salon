@@ -7,17 +7,107 @@
 живёт в availability.py.
 """
 
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from django.conf import settings
 from django.utils import timezone
 
-from ..models import Booking, Master, MasterService, Service
+from ..models import Absence, Booking, Master, MasterService, Service, TimeBlock, WorkDay
+
+
+@dataclass
+class AvailabilitySnapshot:
+    """Предзагруженные данные для расчёта availability на диапазон дат.
+
+    Снимок убирает N+1 в календарных endpoint'ах: после одного набора запросов
+    каждый слот рассчитывается из памяти, без обращений к related managers.
+    Это не резерв и не гарантия доступности при записи — create_booking всё
+    равно повторно проверяет слот под блокировкой мастера.
+    """
+
+    master_services: dict[tuple[int, int], MasterService] = field(default_factory=dict)
+    work_days: dict[tuple[int, date], WorkDay] = field(default_factory=dict)
+    absent_dates: dict[int, set[date]] = field(default_factory=dict)
+    time_blocks: dict[tuple[int, date], list[TimeBlock]] = field(default_factory=dict)
+    bookings: dict[tuple[int, date], list[Booking]] = field(default_factory=dict)
+
+
+def load_availability_snapshot(
+    masters,
+    date_from: date,
+    date_to: date,
+    *,
+    service: Service | None = None,
+) -> AvailabilitySnapshot:
+    """Загружает нужные данные пачками для одного или нескольких мастеров."""
+    master_list = list(masters)
+    master_ids = [master.pk for master in master_list if master.pk is not None]
+    snapshot = AvailabilitySnapshot()
+
+    if not master_ids or date_to < date_from:
+        return snapshot
+
+    master_services = MasterService.objects.filter(
+        master_id__in=master_ids,
+        is_active=True,
+    )
+    if service is not None:
+        master_services = master_services.filter(service_id=service.pk)
+    snapshot.master_services = {
+        (item.master_id, item.service_id): item
+        for item in master_services
+    }
+
+    snapshot.work_days = {
+        (item.master_id, item.date): item
+        for item in WorkDay.objects.filter(
+            master_id__in=master_ids,
+            date__range=(date_from, date_to),
+        )
+    }
+
+    absences = Absence.objects.filter(
+        master_id__in=master_ids,
+        start_date__lte=date_to,
+        end_date__gte=date_from,
+    )
+    for absence in absences:
+        if absence.master_id is None:
+            continue
+        master_id: int = absence.master_id
+        first = max(date_from, absence.start_date)
+        last = min(date_to, absence.end_date)
+        current = first
+        while current <= last:
+            snapshot.absent_dates.setdefault(master_id, set()).add(current)
+            current += timedelta(days=1)
+
+    for block in TimeBlock.objects.filter(
+        master_id__in=master_ids,
+        date__range=(date_from, date_to),
+    ):
+        if block.master_id is None:
+            continue
+        snapshot.time_blocks.setdefault((int(block.master_id), block.date), []).append(block)
+
+    for booking in Booking.objects.filter(
+        master_id__in=master_ids,
+        date__range=(date_from, date_to),
+        status__in=Booking.ACTIVE_STATUSES,
+    ):
+        if booking.master_id is None:
+            continue
+        snapshot.bookings.setdefault((int(booking.master_id), booking.date), []).append(booking)
+
+    return snapshot
 
 
 def get_working_intervals(
     master: Master,
     target_date: date,
+    *,
+    snapshot: AvailabilitySnapshot | None = None,
 ):
     """
     Возвращает рабочие интервалы мастера на конкретную дату.
@@ -34,15 +124,20 @@ def get_working_intervals(
     действует, интервалов нет, даже если рабочий день отмечен.
     """
 
-    is_absent = master.absences.filter(
-        start_date__lte=target_date,
-        end_date__gte=target_date,
-    ).exists()
+    if snapshot is not None:
+        if target_date in snapshot.absent_dates.get(master.pk, set()):
+            return []
+        work_day = snapshot.work_days.get((master.pk, target_date))
+    else:
+        is_absent = master.absences.filter(
+            start_date__lte=target_date,
+            end_date__gte=target_date,
+        ).exists()
 
-    if is_absent:
-        return []
+        if is_absent:
+            return []
 
-    work_day = master.work_days.filter(date=target_date).first()
+        work_day = master.work_days.filter(date=target_date).first()
 
     if work_day is None:
         return []
@@ -61,6 +156,11 @@ def get_candidate_starts(
     Кандидаты создаются с заданным шагом и должны полностью
     помещать услугу заданной продолжительности в рабочий интервал.
     """
+
+    if duration_minutes <= 0:
+        raise ValueError("duration_minutes должен быть больше нуля.")
+    if slot_step_minutes <= 0:
+        raise ValueError("slot_step_minutes должен быть больше нуля.")
 
     candidates = []
     duration = timedelta(minutes=duration_minutes)
@@ -204,6 +304,8 @@ def get_available_slots(
     target_date: date,
     slot_step_minutes: int = 15,
     now=None,
+    *,
+    snapshot: AvailabilitySnapshot | None = None,
 ):
     """
     Возвращает список доступных начал услуги у конкретного мастера
@@ -220,17 +322,32 @@ def get_available_slots(
     передаёт, и берётся timezone.localtime().
     """
 
-    try:
-        master_service = master.master_services.get(
-            service=service,
-            is_active=True,
-        )
-    except MasterService.DoesNotExist:
+    if slot_step_minutes <= 0:
+        raise ValueError("slot_step_minutes должен быть больше нуля.")
+
+    if snapshot is not None:
+        master_service = snapshot.master_services.get((master.pk, service.pk))
+    else:
+        try:
+            master_service = master.master_services.get(
+                service=service,
+                is_active=True,
+            )
+        except MasterService.DoesNotExist:
+            return []
+
+    if master_service is None:
         return []
 
     duration_minutes = master_service.duration
+    if duration_minutes <= 0:
+        return []
 
-    working_intervals = get_working_intervals(master, target_date)
+    working_intervals = get_working_intervals(
+        master,
+        target_date,
+        snapshot=snapshot,
+    )
 
     if not working_intervals:
         return []
@@ -241,7 +358,10 @@ def get_available_slots(
         slot_step_minutes,
     )
 
-    time_blocks = master.time_blocks.filter(date=target_date)
+    if snapshot is not None:
+        time_blocks = snapshot.time_blocks.get((master.pk, target_date), [])
+    else:
+        time_blocks = master.time_blocks.filter(date=target_date)
 
     candidates = filter_candidates_by_time_blocks(
         candidates,
@@ -249,7 +369,10 @@ def get_available_slots(
         time_blocks,
     )
 
-    bookings = get_active_bookings(master, target_date)
+    if snapshot is not None:
+        bookings = snapshot.bookings.get((master.pk, target_date), [])
+    else:
+        bookings = get_active_bookings(master, target_date)
 
     candidates = filter_candidates_by_bookings(
         candidates,

@@ -1,5 +1,6 @@
 from datetime import date, time, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -18,7 +19,7 @@ from catalog.tests.factories import (
 TARGET_DATE = date(2026, 9, 7)
 
 
-def create_data(master, service, **overrides):
+def create_data(master: Any, service: Any, **overrides: Any) -> dict[str, Any]:
     """Данные формы новой записи, как их шлёт браузер."""
     data = {
         "master": master.pk,
@@ -40,17 +41,17 @@ def create_data(master, service, **overrides):
 
 
 class BookingCreateFormTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.service = make_service()
         self.master = make_master()
         make_master_service(self.master, self.service, price=450, duration=30)
 
-    def test_valid_for_free_time(self):
+    def test_valid_for_free_time(self) -> None:
         form = BookingCreateForm(data=create_data(self.master, self.service))
 
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_invalid_when_time_is_already_taken(self):
+    def test_invalid_when_time_is_already_taken(self) -> None:
         make_booking(
             master=self.master,
             service=self.service,
@@ -64,7 +65,7 @@ class BookingCreateFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Выбранное время уже занято.", form.non_field_errors())
 
-    def test_invalid_when_master_does_not_offer_service(self):
+    def test_invalid_when_master_does_not_offer_service(self) -> None:
         other_service = make_service()
 
         form = BookingCreateForm(data=create_data(self.master, other_service))
@@ -72,7 +73,7 @@ class BookingCreateFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Мастер не оказывает данную услугу.", form.non_field_errors())
 
-    def test_online_source_is_not_allowed(self):
+    def test_online_source_is_not_allowed(self) -> None:
         form = BookingCreateForm(
             data=create_data(self.master, self.service, source=Booking.Source.ONLINE),
         )
@@ -80,7 +81,7 @@ class BookingCreateFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("source", form.errors)
 
-    def test_inactive_master_cannot_be_chosen(self):
+    def test_inactive_master_cannot_be_chosen(self) -> None:
         self.master.is_active = False
         self.master.save()
 
@@ -91,7 +92,7 @@ class BookingCreateFormTests(TestCase):
 
 
 class BookingChangeFormTests(TestCase):
-    def make_form(self, booking, **overrides):
+    def make_form(self, booking: Booking, **overrides: Any) -> BookingChangeForm:
         data = {
             "client_name": booking.client_name,
             "client_phone": booking.client_phone,
@@ -101,14 +102,14 @@ class BookingChangeFormTests(TestCase):
         data.update(overrides)
         return BookingChangeForm(data=data, instance=booking)
 
-    def test_active_booking_can_be_cancelled(self):
+    def test_active_booking_can_be_cancelled(self) -> None:
         booking = make_booking(target_date=TARGET_DATE, start_time=time(9, 0))
 
         form = self.make_form(booking, status=Booking.Status.CANCELLED)
 
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_cancelled_booking_cannot_be_returned_to_work(self):
+    def test_cancelled_booking_cannot_be_returned_to_work(self) -> None:
         booking = make_booking(
             target_date=TARGET_DATE,
             start_time=time(9, 0),
@@ -120,7 +121,7 @@ class BookingChangeFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("status", form.errors)
 
-    def test_cancelled_booking_can_still_get_a_comment(self):
+    def test_cancelled_booking_can_still_get_a_comment(self) -> None:
         booking = make_booking(
             target_date=TARGET_DATE,
             start_time=time(9, 0),
@@ -138,8 +139,9 @@ class BookingChangeFormTests(TestCase):
 
 
 class BookingAdminTests(TestCase):
-    def setUp(self):
-        user = get_user_model().objects.create_superuser(
+    def setUp(self) -> None:
+        user_model: Any = get_user_model()
+        user = user_model.objects.create_superuser(
             username="admin-test",
             email="admin-test@example.com",
             password="pass12345",
@@ -154,7 +156,7 @@ class BookingAdminTests(TestCase):
         self.add_url = reverse("admin:catalog_booking_add")
         self.list_url = reverse("admin:catalog_booking_changelist")
 
-    def run_action(self, action, *bookings):
+    def run_action(self, action: str, *bookings: Booking) -> Any:
         return self.client.post(
             self.list_url,
             {
@@ -165,7 +167,7 @@ class BookingAdminTests(TestCase):
 
     # --- создание ---------------------------------------------------------
 
-    def test_add_creates_booking_with_price_and_duration_from_price_list(self):
+    def test_add_creates_booking_with_price_and_duration_from_price_list(self) -> None:
         response = self.client.post(
             self.add_url,
             create_data(self.master, self.service),
@@ -179,7 +181,7 @@ class BookingAdminTests(TestCase):
         self.assertEqual(booking.source, Booking.Source.ADMIN)
         self.assertEqual(booking.client_name, "Иван")
 
-    def test_add_does_not_create_booking_for_taken_time(self):
+    def test_add_does_not_create_booking_for_taken_time(self) -> None:
         make_booking(
             master=self.master,
             service=self.service,
@@ -198,7 +200,7 @@ class BookingAdminTests(TestCase):
 
     # --- правка существующей записи --------------------------------------
 
-    def test_change_updates_status_but_not_readonly_fields(self):
+    def test_change_updates_status_but_not_readonly_fields(self) -> None:
         booking = make_booking(
             master=self.master,
             service=self.service,
@@ -224,7 +226,7 @@ class BookingAdminTests(TestCase):
         self.assertEqual(booking.client_name, "Пётр")
         self.assertEqual(booking.date, TARGET_DATE)
 
-    def test_change_cannot_return_cancelled_booking_to_work(self):
+    def test_change_cannot_return_cancelled_booking_to_work(self) -> None:
         booking = make_booking(
             master=self.master,
             service=self.service,
@@ -249,7 +251,7 @@ class BookingAdminTests(TestCase):
 
     # --- действия над выбранными записями ---------------------------------
 
-    def test_confirm_action_confirms_only_new_bookings(self):
+    def test_confirm_action_confirms_only_new_bookings(self) -> None:
         new = make_booking(
             master=self.master, service=self.service,
             target_date=TARGET_DATE, start_time=time(9, 0),
@@ -268,7 +270,7 @@ class BookingAdminTests(TestCase):
         self.assertEqual(new.status, Booking.Status.CONFIRMED)
         self.assertEqual(cancelled.status, Booking.Status.CANCELLED)
 
-    def test_cancel_action_skips_completed_bookings(self):
+    def test_cancel_action_skips_completed_bookings(self) -> None:
         confirmed = make_booking(
             master=self.master, service=self.service,
             target_date=TARGET_DATE, start_time=time(9, 0),
@@ -287,7 +289,7 @@ class BookingAdminTests(TestCase):
         self.assertEqual(confirmed.status, Booking.Status.CANCELLED)
         self.assertEqual(completed.status, Booking.Status.COMPLETED)
 
-    def test_no_show_action_marks_confirmed_booking(self):
+    def test_no_show_action_marks_confirmed_booking(self) -> None:
         booking = make_booking(
             master=self.master, service=self.service,
             target_date=TARGET_DATE, start_time=time(9, 0),
@@ -299,7 +301,7 @@ class BookingAdminTests(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.NO_SHOW)
 
-    def test_complete_action_marks_confirmed_booking(self):
+    def test_complete_action_marks_confirmed_booking(self) -> None:
         booking = make_booking(
             master=self.master, service=self.service,
             target_date=TARGET_DATE, start_time=time(9, 0),
@@ -313,7 +315,7 @@ class BookingAdminTests(TestCase):
 
     # --- быстрый фильтр по дню --------------------------------------------
 
-    def test_day_filter_today_shows_only_todays_bookings(self):
+    def test_day_filter_today_shows_only_todays_bookings(self) -> None:
         today = timezone.localdate()
         make_booking(
             master=self.master, service=self.service,

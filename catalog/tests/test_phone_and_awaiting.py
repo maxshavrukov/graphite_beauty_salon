@@ -6,7 +6,7 @@
 """
 
 from datetime import date, time, timedelta
-from typing import cast
+from typing import Any, cast
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -234,7 +234,8 @@ class FormatWaitingTests(SimpleTestCase):
 
 class AwaitingListTests(TestCase):
     def setUp(self):
-        user = get_user_model().objects.create_superuser(
+        user_model: Any = get_user_model()
+        user = user_model.objects.create_superuser(
             username="admin-list",
             email="admin-list@example.com",
             password="pass12345",
