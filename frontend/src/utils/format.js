@@ -44,3 +44,13 @@ export function groupByDayPart(times) {
     }),
   })).filter((part) => part.times.length > 0)
 }
+
+// «450.00» -> «450 грн», «1500.00» -> «1 500 грн». Валюта задана здесь
+// в одном месте.
+export function formatPrice(value) {
+  const number = Number(value).toLocaleString('ru-RU', {
+    maximumFractionDigits: 2,
+  })
+
+  return `${number} грн`
+}

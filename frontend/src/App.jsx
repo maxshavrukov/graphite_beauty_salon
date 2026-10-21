@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import DateStep from './components/DateStep'
+import MasterStep from './components/MasterStep'
 import ServiceStep from './components/ServiceStep'
 import TimeStep from './components/TimeStep'
 
@@ -10,6 +11,7 @@ export default function App() {
   const [service, setService] = useState(null)
   const [date, setDate] = useState(null)
   const [time, setTime] = useState(null)
+  const [master, setMaster] = useState(null) // {master, price}
 
   const [categories, setCategories] = useState([])
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -41,17 +43,25 @@ export default function App() {
     setService(chosen)
     setDate(null)
     setTime(null)
+    setMaster(null)
   }
 
   function chooseDate(chosen) {
     setDate(chosen)
     setTime(null)
+    setMaster(null)
+  }
+
+  function chooseTime(chosen) {
+    setTime(chosen)
+    setMaster(null)
   }
 
   function backToServices() {
     setService(null)
     setDate(null)
     setTime(null)
+    setMaster(null)
   }
 
   return (
@@ -95,7 +105,17 @@ export default function App() {
           service={service}
           date={date}
           selectedTime={time}
-          onSelect={setTime}
+          onSelect={chooseTime}
+        />
+      )}
+
+      {status === 'ready' && service && date && time && (
+        <MasterStep
+          service={service}
+          date={date}
+          time={time}
+          selected={master}
+          onSelect={setMaster}
         />
       )}
     </main>

@@ -73,12 +73,6 @@ export default function TimeStep({ service, date, selectedTime, onSelect }) {
           </ul>
         </div>
       ))}
-
-      {selectedTime && (
-        <p className="note">
-          Выбрано: {formatDateLong(date)}, {selectedTime}
-        </p>
-      )}
     </section>
   )
 }
