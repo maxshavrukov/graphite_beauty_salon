@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import { formatDateLong, formatDateParts } from '../utils/format'
+import { formatDateParts } from '../utils/format'
 
 // Шаг 2: выбор даты. Показывает только те дни, где у любого мастера
 // есть свободное время на эту услугу (считает бэкенд).
@@ -71,10 +71,6 @@ export default function DateStep({ service, selectedDate, onSelect, onBack }) {
           )
         })}
       </ul>
-
-      {selectedDate && (
-        <p className="note">Выбрана дата: {formatDateLong(selectedDate)}</p>
-      )}
     </section>
   )
 }

@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from .models import Booking, Master, MasterService, Service, ServiceCategory
 from .phone import InvalidPhoneError, normalize_ua_phone
-from .services import create_booking
+from .services import create_booking, get_slot_step
 
 
 class ServiceSerializer(serializers.ModelSerializer):
@@ -135,6 +135,7 @@ class BookingCreateSerializer(serializers.Serializer):
             client_name=validated_data["client_name"],
             client_phone=validated_data["client_phone"],
             source=Booking.Source.ONLINE,
+            slot_step_minutes=get_slot_step(),
         )
 
 

@@ -16,6 +16,22 @@ from django.utils import timezone
 from ..models import Absence, Booking, Master, MasterService, Service, TimeBlock, WorkDay
 
 
+DEFAULT_SLOT_STEP_MINUTES = 30
+
+
+def get_slot_step() -> int:
+    """
+    Шаг сетки онлайн-записи в минутах (настройка BOOKING_SLOT_STEP_MINUTES).
+
+    Сайт показывает клиенту время с этим шагом, и такой же шаг должен
+    использоваться, когда запись создаётся: иначе с сайта можно было бы
+    записаться на время, которого клиент не видел.
+    """
+    return int(
+        getattr(settings, "BOOKING_SLOT_STEP_MINUTES", DEFAULT_SLOT_STEP_MINUTES),
+    )
+
+
 @dataclass
 class AvailabilitySnapshot:
     """Предзагруженные данные для расчёта availability на диапазон дат.

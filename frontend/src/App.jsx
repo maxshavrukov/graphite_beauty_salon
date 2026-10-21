@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import DateStep from './components/DateStep'
 import ServiceStep from './components/ServiceStep'
+import TimeStep from './components/TimeStep'
 
 export default function App() {
   // Всё, что клиент уже выбрал, лежит здесь. Следующие шаги записи
   // (время, мастер, контакты) будут добавлять сюда свои поля.
   const [service, setService] = useState(null)
   const [date, setDate] = useState(null)
+  const [time, setTime] = useState(null)
 
   const [categories, setCategories] = useState([])
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -33,14 +35,23 @@ export default function App() {
     }
   }, [])
 
+  // Каждый следующий выбор зависит от предыдущего, поэтому смена
+  // услуги или даты сбрасывает всё, что выбрано после неё.
   function chooseService(chosen) {
     setService(chosen)
-    setDate(null) // другая услуга — другие доступные даты
+    setDate(null)
+    setTime(null)
+  }
+
+  function chooseDate(chosen) {
+    setDate(chosen)
+    setTime(null)
   }
 
   function backToServices() {
     setService(null)
     setDate(null)
+    setTime(null)
   }
 
   return (
@@ -74,8 +85,17 @@ export default function App() {
         <DateStep
           service={service}
           selectedDate={date}
-          onSelect={setDate}
+          onSelect={chooseDate}
           onBack={backToServices}
+        />
+      )}
+
+      {status === 'ready' && service && date && (
+        <TimeStep
+          service={service}
+          date={date}
+          selectedTime={time}
+          onSelect={setTime}
         />
       )}
     </main>

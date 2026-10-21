@@ -30,6 +30,7 @@ from .services import (
     get_available_masters_for_slot,
     get_available_slots,
     get_available_times_for_service,
+    get_slot_step,
 )
 
 
@@ -172,7 +173,9 @@ def master_service_available_dates(request, slug, service_slug):
     date_from = timezone.localdate()
     date_to = date_from + timedelta(days=settings.BOOKING_MAX_DAYS_AHEAD)
 
-    dates = get_available_dates_for_master(master, service, date_from, date_to)
+    dates = get_available_dates_for_master(
+        master, service, date_from, date_to, slot_step_minutes=get_slot_step(),
+    )
 
     return Response([d.isoformat() for d in dates])
 
@@ -188,7 +191,9 @@ def master_service_available_times(request, slug, service_slug):
 
     target_date = _parse_date_param(request)
 
-    times = get_available_slots(master, service, target_date)
+    times = get_available_slots(
+        master, service, target_date, slot_step_minutes=get_slot_step(),
+    )
 
     return Response([t.strftime("%H:%M") for t in times])
 
@@ -207,7 +212,9 @@ def service_available_dates(request, service_slug):
     date_from = timezone.localdate()
     date_to = date_from + timedelta(days=settings.BOOKING_MAX_DAYS_AHEAD)
 
-    dates = get_available_dates_for_service(service, date_from, date_to)
+    dates = get_available_dates_for_service(
+        service, date_from, date_to, slot_step_minutes=get_slot_step(),
+    )
 
     return Response([d.isoformat() for d in dates])
 
@@ -224,7 +231,9 @@ def service_available_times(request, service_slug):
 
     target_date = _parse_date_param(request)
 
-    times = get_available_times_for_service(service, target_date)
+    times = get_available_times_for_service(
+        service, target_date, slot_step_minutes=get_slot_step(),
+    )
 
     return Response([t.strftime("%H:%M") for t in times])
 
@@ -243,7 +252,9 @@ def service_available_masters(request, service_slug):
     target_date = _parse_date_param(request)
     target_time = _parse_time_param(request)
 
-    available = get_available_masters_for_slot(service, target_date, target_time)
+    available = get_available_masters_for_slot(
+        service, target_date, target_time, slot_step_minutes=get_slot_step(),
+    )
 
     serializer = AvailableMasterSerializer(
         available, many=True, context={"request": request},

@@ -13,6 +13,7 @@
 так же, как раньше, когда всё было в одном services.py.
 """
 
+from .scheduling import get_slot_step
 from .availability import (
     get_available_dates_for_master,
     get_available_dates_for_service,
@@ -86,6 +87,7 @@ __all__ = [
     "get_candidate_starts",
     "get_filled_until",
     "get_masters_for_service",
+    "get_slot_step",
     "get_month_calendar",
     "get_schedule_status",
     "get_working_intervals",
