@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
+import ContactStep from './components/ContactStep'
 import DateStep from './components/DateStep'
 import MasterStep from './components/MasterStep'
 import ServiceStep from './components/ServiceStep'
+import SuccessStep from './components/SuccessStep'
 import TimeStep from './components/TimeStep'
 
 export default function App() {
-  // Всё, что клиент уже выбрал, лежит здесь. Следующие шаги записи
-  // (время, мастер, контакты) будут добавлять сюда свои поля.
+  // Всё, что клиент уже выбрал, лежит здесь.
   const [service, setService] = useState(null)
   const [date, setDate] = useState(null)
   const [time, setTime] = useState(null)
   const [master, setMaster] = useState(null) // {master, price}
+  const [contact, setContact] = useState({ name: '', phone: '' })
+
+  // Ответ сервера после отправки заявки (не null = заявка принята).
+  const [result, setResult] = useState(null)
+
+  // Причина, по которой пришлось сбросить время (его заняли), и счётчик
+  // для повторной загрузки списка времени.
+  const [notice, setNotice] = useState(null)
+  const [timesVersion, setTimesVersion] = useState(0)
 
   const [categories, setCategories] = useState([])
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -44,17 +54,20 @@ export default function App() {
     setDate(null)
     setTime(null)
     setMaster(null)
+    setNotice(null)
   }
 
   function chooseDate(chosen) {
     setDate(chosen)
     setTime(null)
     setMaster(null)
+    setNotice(null)
   }
 
   function chooseTime(chosen) {
     setTime(chosen)
     setMaster(null)
+    setNotice(null)
   }
 
   function backToServices() {
@@ -62,7 +75,26 @@ export default function App() {
     setDate(null)
     setTime(null)
     setMaster(null)
+    setNotice(null)
   }
+
+  // Сервер ответил, что время недоступно: сбрасываем время и мастера,
+  // обновляем список времени и объясняем клиенту, что случилось.
+  function handleConflict(message) {
+    setTime(null)
+    setMaster(null)
+    setNotice(message)
+    setTimesVersion((version) => version + 1)
+  }
+
+  // «Записаться ещё»: возвращаемся к началу, имя и телефон не храним.
+  function restart() {
+    backToServices()
+    setContact({ name: '', phone: '' })
+    setResult(null)
+  }
+
+  const ready = status === 'ready'
 
   return (
     <main className="page">
@@ -75,23 +107,30 @@ export default function App() {
 
       {status === 'error' && (
         <p className="note note--error">
-          Не удалось загрузить услуги. Проверьте, что Django запущен
-          (python manage.py runserver).
+          Не удалось загрузить услуги. Попробуйте обновить страницу.
         </p>
       )}
 
       {status === 'ready' && categories.length === 0 && (
-        <p className="note">
-          Услуг пока нет. Заполните каталог в админке или выполните
-          python manage.py seed_demo.
-        </p>
+        <p className="note">Услуг пока нет. Загляните позже.</p>
       )}
 
-      {status === 'ready' && !service && (
+      {ready && result && (
+        <SuccessStep
+          result={result}
+          service={service}
+          date={date}
+          time={time}
+          selected={master}
+          onRestart={restart}
+        />
+      )}
+
+      {ready && !result && !service && (
         <ServiceStep categories={categories} onSelect={chooseService} />
       )}
 
-      {status === 'ready' && service && (
+      {ready && !result && service && (
         <DateStep
           service={service}
           selectedDate={date}
@@ -100,22 +139,40 @@ export default function App() {
         />
       )}
 
-      {status === 'ready' && service && date && (
-        <TimeStep
-          service={service}
-          date={date}
-          selectedTime={time}
-          onSelect={chooseTime}
-        />
+      {ready && !result && service && date && (
+        <>
+          {notice && <p className="note note--error">{notice}</p>}
+
+          <TimeStep
+            service={service}
+            date={date}
+            selectedTime={time}
+            onSelect={chooseTime}
+            version={timesVersion}
+          />
+        </>
       )}
 
-      {status === 'ready' && service && date && time && (
+      {ready && !result && service && date && time && (
         <MasterStep
           service={service}
           date={date}
           time={time}
           selected={master}
           onSelect={setMaster}
+        />
+      )}
+
+      {ready && !result && service && date && time && master && (
+        <ContactStep
+          service={service}
+          date={date}
+          time={time}
+          selected={master}
+          contact={contact}
+          onChange={setContact}
+          onSuccess={setResult}
+          onConflict={handleConflict}
         />
       )}
     </main>

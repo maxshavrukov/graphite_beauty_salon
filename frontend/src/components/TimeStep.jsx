@@ -3,20 +3,28 @@ import { api } from '../api/client'
 import { formatDateLong, groupByDayPart } from '../utils/format'
 
 // Ключ, по которому узнаём, для какой услуги и даты получен ответ.
-function makeKey(slug, date) {
-  return `${slug}|${date}`
+function makeKey(slug, date, version) {
+  return `${slug}|${date}|${version}`
 }
 
 // Шаг 3: выбор времени. Показывает свободное время на выбранную дату
 // (у любого мастера, оказывающего услугу), разбитое по частям дня.
-export default function TimeStep({ service, date, selectedTime, onSelect }) {
+// version меняется, когда нужно загрузить список заново (например, выбранное
+// время только что заняли): ответ привязан к ключу, и новый ключ запускает загрузку.
+export default function TimeStep({
+  service,
+  date,
+  selectedTime,
+  onSelect,
+  version = 0,
+}) {
   // Ответ хранится вместе с ключом запроса. Пока ключ не совпал с текущим
   // выбором, считаем, что идёт загрузка (тот же приём, что в DateStep).
   const [result, setResult] = useState({ key: null, times: [], failed: false })
 
   useEffect(() => {
     let cancelled = false
-    const key = makeKey(service.slug, date)
+    const key = makeKey(service.slug, date, version)
 
     api
       .getTimes(service.slug, date)
@@ -30,9 +38,9 @@ export default function TimeStep({ service, date, selectedTime, onSelect }) {
     return () => {
       cancelled = true
     }
-  }, [service.slug, date])
+  }, [service.slug, date, version])
 
-  const loading = result.key !== makeKey(service.slug, date)
+  const loading = result.key !== makeKey(service.slug, date, version)
   const groups = groupByDayPart(result.times)
 
   return (
