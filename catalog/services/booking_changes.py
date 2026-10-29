@@ -107,9 +107,7 @@ def validate_reschedule(
     пары: уже обещанную клиенту запись нельзя сделать непереносимой только
     из-за изменения каталога.
     """
-    same_pair = (
-        master.pk == booking.master_id and service.pk == booking.service_id
-    )
+    same_pair = master.pk == booking.master_id and service.pk == booking.service_id
 
     return validate_booking_slot(
         master,
@@ -166,9 +164,8 @@ def reschedule_booking(
         # Важно ограничить блокировку самой записью. Без of=("self",)
         # PostgreSQL может заблокировать строки из select_related, что вместе
         # с блокировкой целевого мастера создаёт риск deadlock.
-        locked = (
-            Booking.objects.select_for_update(of=("self",))
-            .get(pk=_booking_pk(booking))
+        locked = Booking.objects.select_for_update(of=("self",)).get(
+            pk=_booking_pk(booking)
         )
 
         if locked.status not in Booking.ACTIVE_STATUSES:
@@ -229,8 +226,7 @@ def reschedule_booking(
             details = f"{details}. {note}" if details else note
 
         keeps_price_list = (
-            new_master.pk == locked.master_id
-            and new_service.pk == locked.service_id
+            new_master.pk == locked.master_id and new_service.pk == locked.service_id
         )
 
         locked.master = new_master

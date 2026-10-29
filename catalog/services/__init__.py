@@ -13,7 +13,6 @@
 так же, как раньше, когда всё было в одном services.py.
 """
 
-from .scheduling import get_slot_step
 from .availability import (
     get_available_dates_for_master,
     get_available_dates_for_service,
@@ -21,18 +20,18 @@ from .availability import (
     get_available_times_for_service,
     get_masters_for_service,
 )
+from .booking import (
+    SlotUnavailableError,
+    create_booking,
+    get_booking_end_time,
+    validate_booking_slot,
+)
 from .booking_changes import (
     BookingStateError,
     can_change_status,
     change_booking_status,
     reschedule_booking,
     validate_reschedule,
-)
-from .booking import (
-    SlotUnavailableError,
-    create_booking,
-    get_booking_end_time,
-    validate_booking_slot,
 )
 from .schedule_editor import (
     CalendarDay,
@@ -56,6 +55,7 @@ from .scheduling import (
     get_active_bookings,
     get_available_slots,
     get_candidate_starts,
+    get_slot_step,
     get_working_intervals,
     intervals_overlap,
 )

@@ -6,6 +6,7 @@
 """
 
 from typing import Any
+
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -227,7 +228,11 @@ class BookingChangeForm(forms.ModelForm):
                 "занять. Создайте новую запись."
             )
 
-        if initial_status and new_status and not can_change_status(initial_status, new_status):
+        if (
+            initial_status
+            and new_status
+            and not can_change_status(initial_status, new_status)
+        ):
             raise ValidationError("Такая смена статуса не разрешена.")
 
         return str(new_status or "")

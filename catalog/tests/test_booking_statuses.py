@@ -55,12 +55,16 @@ class BookingStatusAgreementTests(TestCase):
         self.assertEqual(set(Booking.ACTIVE_STATUSES), ACTIVE)
 
     def test_slot_calculation_blocks_exactly_active_statuses(self):
-        blocking = {booking.status for booking in get_active_bookings(self.master, MONDAY)}
+        blocking = {
+            booking.status for booking in get_active_bookings(self.master, MONDAY)
+        }
 
         self.assertEqual(blocking, ACTIVE)
 
     def test_schedule_editor_finds_exactly_active_bookings(self):
-        found = {booking.status for booking in find_active_bookings(self.master, [MONDAY])}
+        found = {
+            booking.status for booking in find_active_bookings(self.master, [MONDAY])
+        }
 
         self.assertEqual(found, ACTIVE)
 

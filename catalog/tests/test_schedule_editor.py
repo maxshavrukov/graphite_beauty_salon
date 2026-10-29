@@ -65,8 +65,12 @@ class SetWorkDaysTests(TestCase):
 
     def test_saves_break(self):
         set_work_days(
-            self.master, [MONDAY], time(10, 0), time(19, 0),
-            break_start=time(14, 0), break_end=time(14, 30),
+            self.master,
+            [MONDAY],
+            time(10, 0),
+            time(19, 0),
+            break_start=time(14, 0),
+            break_end=time(14, 30),
         )
 
         self.assertEqual(
@@ -96,14 +100,20 @@ class SetWorkDaysTests(TestCase):
         make_work_day(self.master, MONDAY + timedelta(days=1), time(10, 0), time(19, 0))
 
         result = set_work_days(
-            self.master, days(MONDAY, 3), time(10, 0), time(19, 0),
+            self.master,
+            days(MONDAY, 3),
+            time(10, 0),
+            time(19, 0),
         )
 
         self.assertEqual((result.created, result.updated, result.unchanged), (1, 1, 1))
 
     def test_duplicate_dates_are_counted_once(self):
         result = set_work_days(
-            self.master, [MONDAY, MONDAY, MONDAY], time(9, 0), time(18, 0),
+            self.master,
+            [MONDAY, MONDAY, MONDAY],
+            time(9, 0),
+            time(18, 0),
         )
 
         self.assertEqual(result.created, 1)
@@ -117,14 +127,21 @@ class SetWorkDaysTests(TestCase):
     def test_rejects_break_outside_working_time(self):
         with self.assertRaises(ValidationError):
             set_work_days(
-                self.master, [MONDAY], time(9, 0), time(18, 0),
-                break_start=time(17, 0), break_end=time(19, 0),
+                self.master,
+                [MONDAY],
+                time(9, 0),
+                time(18, 0),
+                break_start=time(17, 0),
+                break_end=time(19, 0),
             )
 
     def test_rejects_break_with_only_one_side(self):
         with self.assertRaises(ValidationError):
             set_work_days(
-                self.master, [MONDAY], time(9, 0), time(18, 0),
+                self.master,
+                [MONDAY],
+                time(9, 0),
+                time(18, 0),
                 break_start=time(13, 0),
             )
 
@@ -215,7 +232,9 @@ class RemoveWorkDaysTests(TestCase):
         with self.assertRaises(ValidationError):
             remove_work_days(self.master, [MONDAY])
 
-        self.assertEqual(WorkDay.objects.filter(master=self.master, date=MONDAY).count(), 1)
+        self.assertEqual(
+            WorkDay.objects.filter(master=self.master, date=MONDAY).count(), 1
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +248,11 @@ class CreateAbsenceTests(TestCase):
 
     def test_creates_absence(self):
         absence = create_absence(
-            self.master, Absence.Kind.SICK,
-            date(2026, 10, 10), date(2026, 10, 17), "Грипп",
+            self.master,
+            Absence.Kind.SICK,
+            date(2026, 10, 10),
+            date(2026, 10, 17),
+            "Грипп",
         )
 
         self.assertIsNotNone(absence.pk)
@@ -240,8 +262,10 @@ class CreateAbsenceTests(TestCase):
     def test_rejects_end_before_start(self):
         with self.assertRaises(ValidationError):
             create_absence(
-                self.master, Absence.Kind.VACATION,
-                date(2026, 10, 17), date(2026, 10, 10),
+                self.master,
+                Absence.Kind.VACATION,
+                date(2026, 10, 17),
+                date(2026, 10, 10),
             )
 
     def test_rejects_overlap_with_existing_absence(self):
@@ -249,8 +273,10 @@ class CreateAbsenceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             create_absence(
-                self.master, Absence.Kind.DAY_OFF,
-                date(2026, 10, 15), date(2026, 10, 20),
+                self.master,
+                Absence.Kind.DAY_OFF,
+                date(2026, 10, 15),
+                date(2026, 10, 20),
             )
 
         self.assertEqual(Absence.objects.count(), 1)
@@ -337,7 +363,9 @@ class FindActiveBookingsTests(TestCase):
         self.booking(MONDAY + timedelta(days=3), 9)
 
         result = find_active_bookings_in_range(
-            self.master, MONDAY, MONDAY + timedelta(days=2),
+            self.master,
+            MONDAY,
+            MONDAY + timedelta(days=2),
         )
 
         self.assertEqual(result, [first, last])
@@ -416,7 +444,11 @@ class CopyWorkDaysTests(TestCase):
 
     def copy(self, **kwargs):
         return copy_work_days(
-            self.master, MONDAY, MONDAY + timedelta(days=6), shift_weeks=2, **kwargs,
+            self.master,
+            MONDAY,
+            MONDAY + timedelta(days=6),
+            shift_weeks=2,
+            **kwargs,
         )
 
     def test_copies_forward_keeping_weekdays(self):
@@ -429,7 +461,8 @@ class CopyWorkDaysTests(TestCase):
 
     def test_copies_times_and_break(self):
         WorkDay.objects.filter(master=self.master, date=MONDAY).update(
-            break_start=time(14, 0), break_end=time(14, 30),
+            break_start=time(14, 0),
+            break_end=time(14, 30),
         )
 
         self.copy()
@@ -470,7 +503,9 @@ class CopyWorkDaysTests(TestCase):
 
     def test_rejects_reversed_period(self):
         with self.assertRaises(ValueError):
-            copy_work_days(self.master, MONDAY + timedelta(days=1), MONDAY, shift_weeks=1)
+            copy_work_days(
+                self.master, MONDAY + timedelta(days=1), MONDAY, shift_weeks=1
+            )
 
 
 class ExtendScheduleTests(TestCase):
@@ -544,8 +579,12 @@ class GetMonthCalendarTests(TestCase):
 
     def test_working_day_carries_its_times(self):
         make_work_day(
-            self.master, MONDAY, time(10, 0), time(19, 0),
-            break_start=time(14, 0), break_end=time(14, 30),
+            self.master,
+            MONDAY,
+            time(10, 0),
+            time(19, 0),
+            break_start=time(14, 0),
+            break_end=time(14, 30),
         )
 
         result = self.day(5)
@@ -591,16 +630,23 @@ class GetMonthCalendarTests(TestCase):
             (11, Booking.Status.CANCELLED),
         ):
             make_booking(
-                master=self.master, service=self.service,
-                target_date=MONDAY, start_time=time(hour, 0), status=status,
+                master=self.master,
+                service=self.service,
+                target_date=MONDAY,
+                start_time=time(hour, 0),
+                status=status,
             )
         make_booking(
-            master=self.master, service=self.service,
-            target_date=MONDAY + timedelta(days=1), start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=MONDAY + timedelta(days=1),
+            start_time=time(9, 0),
         )
         make_booking(
-            master=make_master(), service=self.service,
-            target_date=MONDAY, start_time=time(9, 0),
+            master=make_master(),
+            service=self.service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
         )
 
         self.assertEqual(self.day(5).bookings_count, 2)
@@ -620,8 +666,10 @@ class GetMonthCalendarTests(TestCase):
         make_work_day(self.master, MONDAY)
         make_absence(self.master, MONDAY)
         make_booking(
-            master=self.master, service=self.service,
-            target_date=MONDAY, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
         )
 
         with self.assertNumQueries(3):

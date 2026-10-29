@@ -1,0 +1,38 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Graphite — салон красоты{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="{% static 'webpages/css/style.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="{% url 'webpages:home' %}" aria-label="Graphite — на главную">
+        <span class="brand-name">Graphite</span>
+        <span class="brand-tag">Салон красоты</span>
+      </a>
+
+      <nav class="site-nav" aria-label="Основное меню">
+        <a href="{% url 'webpages:home' %}#services">Услуги</a>
+        <a href="{% url 'webpages:home' %}#masters">Мастера</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="brand-name">Graphite</span>
+      <span class="footer-note">© {% now "Y" %} Graphite</span>
+    </div>
+  </footer>
+</body>
+</html>

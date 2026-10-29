@@ -7,7 +7,6 @@ change_booking_status и reschedule_booking: они проверяют прав�
 """
 
 from datetime import timedelta
-from typing import Any
 
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
@@ -76,9 +75,7 @@ class BookingAwaitingFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         count = (
-            model_admin.get_queryset(request)
-            .filter(status=Booking.Status.NEW)
-            .count()
+            model_admin.get_queryset(request).filter(status=Booking.Status.NEW).count()
         )
         return (("yes", f"Ждут звонка ({count})"),)
 

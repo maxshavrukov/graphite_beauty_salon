@@ -1,0 +1,124 @@
+{% extends "webpages/base.html" %}
+{% block content %}
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-text">
+        <p class="eyebrow">Салон красоты</p>
+        <h1>Graphite: бережный уход и&nbsp;аккуратная работа мастеров</h1>
+        <p class="lead">
+          Выберите услугу, удобное время и мастера — и запишитесь онлайн за пару
+          минут. Остальное мы возьмём на себя.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="{% url 'webpages:booking' %}">Записаться онлайн</a>
+          {% if categories %}
+            <a class="btn btn-ghost" href="#services">Посмотреть услуги</a>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Декоративный блок вместо фото. Когда появятся фотографии салона,заменить на <img />. #}
+      <div class="hero-art" aria-hidden="true">
+        <div class="hero-art-arch"></div>
+        <div class="hero-art-dot hero-art-dot-1"></div>
+        <div class="hero-art-dot hero-art-dot-2"></div>
+      </div>
+    </div>
+  </section>
+  {% if categories %}
+    <section class="section" id="services">
+      <div class="container">
+        <div class="section-head">
+          <h2>Услуги</h2>
+          <p>
+            Выберите направление. Цены и полный список появятся на отдельной
+            странице.
+          </p>
+        </div>
+
+        <div class="card-grid">
+          {% for category in categories %}
+            <article class="card">
+              <h3>{{ category.name }}</h3>
+              <ul class="card-list">
+                {% for service in category.public_services|slice:":4" %}
+                  <li>{{ service.name }}</li>
+                {% endfor %}
+
+                {% if category.public_services|length > 4 %}
+                  <li class="card-more">и другие</li>
+                {% endif %}
+              </ul>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if masters %}
+    <section class="section section-soft" id="masters">
+      <div class="container">
+        <div class="section-head">
+          <h2>Мастера</h2>
+          <p>Выберите специалиста и запишитесь на удобное время.</p>
+        </div>
+
+        <div class="master-grid">
+          {% for master in masters %}
+            <article class="master">
+              {% if master.photo %}
+                <img class="master-photo"
+                     src="{{ master.photo.url }}"
+                     alt="{{ master.name }}"
+                     loading="lazy" />
+              {% else %}
+                <div class="master-photo master-photo-empty"
+                     aria-hidden="true">{{ master.name|first }}</div>
+              {% endif %}
+              <h3>{{ master.name }}</h3>
+              {% if master.bio %}
+                <p>{{ master.bio|truncatewords:22 }}</p>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+  {% endif %}
+
+  <section class="section" id="how">
+    <div class="container">
+      <div class="section-head">
+        <h2>Как записаться</h2>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <span class="step-num">1</span>
+          <h3>Выберите услугу и время</h3>
+          <p>Дату, удобное время и мастера из тех, кто свободен.</p>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <h3>Оставьте контакты</h3>
+          <p>Имя и телефон — больше ничего не нужно.</p>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <h3>Мы подтвердим запись</h3>
+          <p>Администратор свяжется с вами и подтвердит визит.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="container cta-inner">
+      <h2>Готовы записаться?</h2>
+      <a class="btn btn-primary" href="{% url 'webpages:booking' %}">Выбрать время</a>
+    </div>
+  </section>
+
+{% endblock %}

@@ -86,7 +86,10 @@ class GetAvailableSlotsTests(TestCase):
         )
 
         result = get_available_slots(
-            self.master, self.service, self.target_date, slot_step_minutes=30,
+            self.master,
+            self.service,
+            self.target_date,
+            slot_step_minutes=30,
         )
 
         # Перерыв 10:00–10:30 вырезан из дня: остаются 9:00, 9:30 и 10:30.
@@ -204,7 +207,10 @@ class GetAvailableSlotsTests(TestCase):
         )
 
         result = get_available_slots(
-            self.master, self.service, self.target_date, now=now,
+            self.master,
+            self.service,
+            self.target_date,
+            now=now,
         )
 
         # Меньше часа до начала — не бронируется, даже 10:15 и 11:00.
@@ -229,7 +235,10 @@ class GetAvailableSlotsTests(TestCase):
         )
 
         result = get_available_slots(
-            self.master, self.service, self.target_date, now=now,
+            self.master,
+            self.service,
+            self.target_date,
+            now=now,
         )
 
         self.assertEqual(result, [])
@@ -252,7 +261,10 @@ class GetAvailableSlotsTests(TestCase):
         )
 
         result = get_available_slots(
-            self.master, self.service, self.target_date, now=earlier_moment,
+            self.master,
+            self.service,
+            self.target_date,
+            now=earlier_moment,
         )
 
         self.assertEqual(result, [time(9, 0), time(9, 15), time(9, 30)])

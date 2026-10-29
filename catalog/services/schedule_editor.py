@@ -36,9 +36,9 @@ from ..models import Absence, Booking, Master, WorkDay
 # За сколько дней до конца расписания предупреждать админа.
 DEFAULT_WARNING_DAYS = 21
 
-STATE_EMPTY = "empty"      # мастер в этот день не отмечен
+STATE_EMPTY = "empty"  # мастер в этот день не отмечен
 STATE_WORKING = "working"  # рабочий день
-STATE_ABSENT = "absent"    # отпуск, больничный или отгул
+STATE_ABSENT = "absent"  # отпуск, больничный или отгул
 
 
 def _booking_fits_work_day(booking: Booking, work_day: WorkDay | None) -> bool:
@@ -427,7 +427,9 @@ def get_schedule_status(
 
     if warning_days is None:
         raw_warning = getattr(settings, "SCHEDULE_WARNING_DAYS", None)
-        warning_days = int(raw_warning) if raw_warning is not None else DEFAULT_WARNING_DAYS
+        warning_days = (
+            int(raw_warning) if raw_warning is not None else DEFAULT_WARNING_DAYS
+        )
     else:
         warning_days = int(warning_days)
 
@@ -553,9 +555,7 @@ def extend_schedule(
     last_day = get_filled_until(master)
 
     if last_day is None:
-        raise ValidationError(
-            "У мастера нет расписания, которое можно продлить."
-        )
+        raise ValidationError("У мастера нет расписания, которое можно продлить.")
 
     return copy_work_days(
         master,
@@ -619,11 +619,7 @@ def get_month_calendar(
 
     while current <= last_day:
         absence = next(
-            (
-                item
-                for item in absences
-                if item.start_date <= current <= item.end_date
-            ),
+            (item for item in absences if item.start_date <= current <= item.end_date),
             None,
         )
 

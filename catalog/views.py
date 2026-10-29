@@ -14,7 +14,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Master, MasterService, Service, ServiceCategory
-from .throttles import BookingCreateThrottle
 from .serializers import (
     AvailableMasterSerializer,
     BookingCreateSerializer,
@@ -32,6 +31,7 @@ from .services import (
     get_available_times_for_service,
     get_slot_step,
 )
+from .throttles import BookingCreateThrottle
 
 
 @api_view(["GET"])
@@ -64,7 +64,9 @@ def master_list(request):
     ).order_by("sort_order", "name")
 
     serializer = MasterSerializer(
-        masters, many=True, context={"request": request},
+        masters,
+        many=True,
+        context={"request": request},
     )
 
     return Response(serializer.data)
@@ -80,11 +82,16 @@ def master_services(request, slug):
     """
     master = get_object_or_404(Master, slug=slug, is_active=True)
 
-    services = master.master_services.filter(
-        is_active=True,
-        service__is_active=True,
-    ).select_related("service").order_by(
-        "service__sort_order", "service__name",
+    services = (
+        master.master_services.filter(
+            is_active=True,
+            service__is_active=True,
+        )
+        .select_related("service")
+        .order_by(
+            "service__sort_order",
+            "service__name",
+        )
     )
 
     serializer = MasterServiceSerializer(services, many=True)
@@ -174,7 +181,11 @@ def master_service_available_dates(request, slug, service_slug):
     date_to = date_from + timedelta(days=settings.BOOKING_MAX_DAYS_AHEAD)
 
     dates = get_available_dates_for_master(
-        master, service, date_from, date_to, slot_step_minutes=get_slot_step(),
+        master,
+        service,
+        date_from,
+        date_to,
+        slot_step_minutes=get_slot_step(),
     )
 
     return Response([d.isoformat() for d in dates])
@@ -192,7 +203,10 @@ def master_service_available_times(request, slug, service_slug):
     target_date = _parse_date_param(request)
 
     times = get_available_slots(
-        master, service, target_date, slot_step_minutes=get_slot_step(),
+        master,
+        service,
+        target_date,
+        slot_step_minutes=get_slot_step(),
     )
 
     return Response([t.strftime("%H:%M") for t in times])
@@ -213,7 +227,10 @@ def service_available_dates(request, service_slug):
     date_to = date_from + timedelta(days=settings.BOOKING_MAX_DAYS_AHEAD)
 
     dates = get_available_dates_for_service(
-        service, date_from, date_to, slot_step_minutes=get_slot_step(),
+        service,
+        date_from,
+        date_to,
+        slot_step_minutes=get_slot_step(),
     )
 
     return Response([d.isoformat() for d in dates])
@@ -232,7 +249,9 @@ def service_available_times(request, service_slug):
     target_date = _parse_date_param(request)
 
     times = get_available_times_for_service(
-        service, target_date, slot_step_minutes=get_slot_step(),
+        service,
+        target_date,
+        slot_step_minutes=get_slot_step(),
     )
 
     return Response([t.strftime("%H:%M") for t in times])
@@ -253,11 +272,16 @@ def service_available_masters(request, service_slug):
     target_time = _parse_time_param(request)
 
     available = get_available_masters_for_slot(
-        service, target_date, target_time, slot_step_minutes=get_slot_step(),
+        service,
+        target_date,
+        target_time,
+        slot_step_minutes=get_slot_step(),
     )
 
     serializer = AvailableMasterSerializer(
-        available, many=True, context={"request": request},
+        available,
+        many=True,
+        context={"request": request},
     )
 
     return Response(serializer.data)

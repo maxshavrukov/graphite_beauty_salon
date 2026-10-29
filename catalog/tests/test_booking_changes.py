@@ -52,7 +52,10 @@ class BookingTestCase(TestCase):
         self.service = make_service()
         self.master = make_master()
         self.master_service = make_master_service(
-            self.master, self.service, price=Decimal("450.00"), duration=30,
+            self.master,
+            self.service,
+            price=Decimal("450.00"),
+            duration=30,
         )
         make_work_day(self.master, MONDAY, time(9, 0), time(18, 0))
 
@@ -99,7 +102,9 @@ class ChangeBookingStatusTests(BookingTestCase):
         user = make_user()
 
         result = change_booking_status(
-            booking, Booking.Status.CONFIRMED, actor=user,
+            booking,
+            Booking.Status.CONFIRMED,
+            actor=user,
         )
 
         booking.refresh_from_db()
@@ -160,14 +165,20 @@ class ChangeBookingStatusTests(BookingTestCase):
 
         with self.assertRaises(SlotUnavailableError):
             validate_booking_slot(
-                self.master, self.service, MONDAY, time(10, 0),
+                self.master,
+                self.service,
+                MONDAY,
+                time(10, 0),
                 Booking.Source.ADMIN,
             )
 
         change_booking_status(booking, Booking.Status.CANCELLED)
 
         validate_booking_slot(
-            self.master, self.service, MONDAY, time(10, 0),
+            self.master,
+            self.service,
+            MONDAY,
+            time(10, 0),
             Booking.Source.ADMIN,
         )
 
@@ -183,12 +194,18 @@ class ValidateSlotForRescheduleTests(BookingTestCase):
 
         with self.assertRaises(SlotUnavailableError):
             validate_booking_slot(
-                self.master, self.service, MONDAY, time(10, 0),
+                self.master,
+                self.service,
+                MONDAY,
+                time(10, 0),
                 Booking.Source.ADMIN,
             )
 
         validate_booking_slot(
-            self.master, self.service, MONDAY, time(10, 0),
+            self.master,
+            self.service,
+            MONDAY,
+            time(10, 0),
             Booking.Source.ADMIN,
             exclude_booking_id=booking.pk,
         )
@@ -199,7 +216,10 @@ class ValidateSlotForRescheduleTests(BookingTestCase):
 
         with self.assertRaises(SlotUnavailableError):
             validate_booking_slot(
-                self.master, self.service, MONDAY, time(11, 0),
+                self.master,
+                self.service,
+                MONDAY,
+                time(11, 0),
                 Booking.Source.ADMIN,
                 exclude_booking_id=booking.pk,
             )
@@ -210,13 +230,19 @@ class ValidateSlotForRescheduleTests(BookingTestCase):
         # По прайсу 30 минут: 10:30–11:00 свободно. Но для записи на
         # 60 минут то же время заходит на чужую запись в 11:00.
         validate_booking_slot(
-            self.master, self.service, MONDAY, time(10, 30),
+            self.master,
+            self.service,
+            MONDAY,
+            time(10, 30),
             Booking.Source.ADMIN,
         )
 
         with self.assertRaises(SlotUnavailableError):
             validate_booking_slot(
-                self.master, self.service, MONDAY, time(10, 30),
+                self.master,
+                self.service,
+                MONDAY,
+                time(10, 30),
                 Booking.Source.ADMIN,
                 duration_minutes=60,
             )
@@ -224,7 +250,10 @@ class ValidateSlotForRescheduleTests(BookingTestCase):
     def test_online_source_does_not_accept_reschedule_arguments(self):
         with self.assertRaises(ValueError):
             validate_booking_slot(
-                self.master, self.service, MONDAY, time(10, 0),
+                self.master,
+                self.service,
+                MONDAY,
+                time(10, 0),
                 Booking.Source.ONLINE,
                 exclude_booking_id=1,
             )
@@ -357,7 +386,10 @@ class RescheduleBookingTests(BookingTestCase):
         booking = self.book()
         other_master = make_master()
         make_master_service(
-            other_master, self.service, price=Decimal("700.00"), duration=45,
+            other_master,
+            self.service,
+            price=Decimal("700.00"),
+            duration=45,
         )
 
         reschedule_booking(booking, master=other_master)

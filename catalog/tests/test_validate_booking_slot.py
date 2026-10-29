@@ -27,7 +27,10 @@ class ValidateBookingSlotTests(TestCase):
             end_time=time(10, 0),
         )
         self.master_service = make_master_service(
-            self.master, self.service, price=Decimal("450.00"), duration=30,
+            self.master,
+            self.service,
+            price=Decimal("450.00"),
+            duration=30,
         )
 
     def validate(self, start_time=time(9, 0), source: str = Booking.Source.ONLINE):

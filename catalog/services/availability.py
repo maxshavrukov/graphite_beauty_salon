@@ -49,14 +49,21 @@ def get_available_dates_for_master(
         return []
 
     snapshot = load_availability_snapshot(
-        [master], date_from, date_to, service=service,
+        [master],
+        date_from,
+        date_to,
+        service=service,
     )
     available_dates = []
     current = date_from
 
     while current <= date_to:
         if get_available_slots(
-            master, service, current, slot_step_minutes, snapshot=snapshot,
+            master,
+            service,
+            current,
+            slot_step_minutes,
+            snapshot=snapshot,
         ):
             available_dates.append(current)
 
@@ -89,7 +96,10 @@ def get_available_dates_for_service(
         return []
 
     snapshot = load_availability_snapshot(
-        masters, date_from, date_to, service=service,
+        masters,
+        date_from,
+        date_to,
+        service=service,
     )
     available_dates = []
     current = date_from
@@ -131,7 +141,10 @@ def get_available_times_for_service(
 
     masters = list(get_masters_for_service(service))
     snapshot = load_availability_snapshot(
-        masters, target_date, target_date, service=service,
+        masters,
+        target_date,
+        target_date,
+        service=service,
     )
 
     available_times = set()
@@ -173,7 +186,10 @@ def get_available_masters_for_slot(
     )
     masters = [item.master for item in master_services]
     snapshot = load_availability_snapshot(
-        masters, target_date, target_date, service=service,
+        masters,
+        target_date,
+        target_date,
+        service=service,
     )
 
     available = []
@@ -188,9 +204,11 @@ def get_available_masters_for_slot(
         )
 
         if start_time in slots:
-            available.append({
-                "master": master_service.master,
-                "price": master_service.price,
-            })
+            available.append(
+                {
+                    "master": master_service.master,
+                    "price": master_service.price,
+                }
+            )
 
     return available

@@ -98,14 +98,20 @@ class AvailabilityQueryCountTests(TestCase):
 
     def test_calendar_for_one_master(self):
         master = make_working_master(
-            self.service, MON_TO_SAT, self.date_from, self.date_to,
+            self.service,
+            MON_TO_SAT,
+            self.date_from,
+            self.date_to,
         )
         add_typical_load(master, self.service, self.date_from)
 
         dates = self.measure(
             "Календарь «к мастеру» (1 мастер)",
             lambda: get_available_dates_for_master(
-                master, self.service, self.date_from, self.date_to,
+                master,
+                self.service,
+                self.date_from,
+                self.date_to,
             ),
         )
 
@@ -114,14 +120,19 @@ class AvailabilityQueryCountTests(TestCase):
     def test_calendar_for_service_when_all_masters_are_free(self):
         for _ in range(3):
             master = make_working_master(
-                self.service, MON_TO_SAT, self.date_from, self.date_to,
+                self.service,
+                MON_TO_SAT,
+                self.date_from,
+                self.date_to,
             )
             add_typical_load(master, self.service, self.date_from)
 
         dates = self.measure(
             "Календарь «быстрая запись» (3 мастера, все работают пн–сб)",
             lambda: get_available_dates_for_service(
-                self.service, self.date_from, self.date_to,
+                self.service,
+                self.date_from,
+                self.date_to,
             ),
         )
 
@@ -132,14 +143,19 @@ class AvailabilityQueryCountTests(TestCase):
 
         for weekdays in schedules:
             master = make_working_master(
-                self.service, weekdays, self.date_from, self.date_to,
+                self.service,
+                weekdays,
+                self.date_from,
+                self.date_to,
             )
             add_typical_load(master, self.service, self.date_from)
 
         dates = self.measure(
             "Календарь «быстрая запись» (3 мастера, у каждого свои дни)",
             lambda: get_available_dates_for_service(
-                self.service, self.date_from, self.date_to,
+                self.service,
+                self.date_from,
+                self.date_to,
             ),
         )
 
@@ -150,14 +166,19 @@ class AvailabilityQueryCountTests(TestCase):
 
         for weekdays in schedules:
             master = make_working_master(
-                self.service, weekdays, self.date_from, self.date_to,
+                self.service,
+                weekdays,
+                self.date_from,
+                self.date_to,
             )
             add_typical_load(master, self.service, self.date_from)
 
         dates = self.measure(
             "Календарь «быстрая запись» (5 мастеров, у каждого свои дни)",
             lambda: get_available_dates_for_service(
-                self.service, self.date_from, self.date_to,
+                self.service,
+                self.date_from,
+                self.date_to,
             ),
         )
 
@@ -168,7 +189,10 @@ class AvailabilityQueryCountTests(TestCase):
     def test_times_for_service_on_one_day(self):
         for _ in range(3):
             make_working_master(
-                self.service, MON_TO_SAT, self.date_from, self.date_to,
+                self.service,
+                MON_TO_SAT,
+                self.date_from,
+                self.date_to,
             )
 
         target_date = self.date_from + timedelta(days=1)
@@ -183,7 +207,10 @@ class AvailabilityQueryCountTests(TestCase):
     def test_masters_for_one_slot(self):
         for _ in range(3):
             make_working_master(
-                self.service, MON_TO_SAT, self.date_from, self.date_to,
+                self.service,
+                MON_TO_SAT,
+                self.date_from,
+                self.date_to,
             )
 
         target_date = self.date_from + timedelta(days=1)
@@ -191,7 +218,9 @@ class AvailabilityQueryCountTests(TestCase):
         masters = self.measure(
             "Мастера на конкретное время (3 мастера)",
             lambda: get_available_masters_for_slot(
-                self.service, target_date, time(10, 0),
+                self.service,
+                target_date,
+                time(10, 0),
             ),
         )
 
@@ -200,12 +229,17 @@ class AvailabilityQueryCountTests(TestCase):
     def test_service_calendar_query_count_is_bounded(self):
         for _ in range(5):
             make_working_master(
-                self.service, MON_TO_SAT, self.date_from, self.date_to,
+                self.service,
+                MON_TO_SAT,
+                self.date_from,
+                self.date_to,
             )
 
         with CaptureQueriesContext(connection) as context:
             result = get_available_dates_for_service(
-                self.service, self.date_from, self.date_to,
+                self.service,
+                self.date_from,
+                self.date_to,
             )
 
         self.assertTrue(result)

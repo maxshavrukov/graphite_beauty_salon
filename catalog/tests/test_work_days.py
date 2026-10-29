@@ -1,12 +1,11 @@
 from datetime import date, time
 
-from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase
 
 from catalog.models import Absence, Master, WorkDay
 from catalog.tests.factories import make_master
-
 
 # ---------------------------------------------------------------------------
 # WorkDay: чистая логика (без базы)

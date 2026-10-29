@@ -113,18 +113,27 @@ class GetCandidateStartsTests(TestCase):
 class IntervalsOverlapTests(TestCase):
     def test_returns_true_when_intervals_overlap(self):
         result = intervals_overlap(
-            time(10, 0), time(11, 0), time(10, 30), time(11, 30),
+            time(10, 0),
+            time(11, 0),
+            time(10, 30),
+            time(11, 30),
         )
         self.assertTrue(result)
 
     def test_returns_false_when_intervals_only_touch(self):
         result = intervals_overlap(
-            time(10, 0), time(11, 0), time(11, 0), time(12, 0),
+            time(10, 0),
+            time(11, 0),
+            time(11, 0),
+            time(12, 0),
         )
         self.assertFalse(result)
 
     def test_returns_false_when_intervals_do_not_overlap(self):
         result = intervals_overlap(
-            time(10, 0), time(11, 0), time(12, 0), time(13, 0),
+            time(10, 0),
+            time(11, 0),
+            time(12, 0),
+            time(13, 0),
         )
         self.assertFalse(result)

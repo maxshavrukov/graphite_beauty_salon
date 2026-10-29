@@ -1,42 +1,103 @@
 """
 Рабочие дни и отсутствия мастеров — технические страницы со списками.
 
-Это временный вид: позже расписание будет заполняться специальной
-формой и календарём. Пока здесь можно посмотреть и поправить записи.
+Основной способ заполнять расписание — страница «Расписание» (календарь,
+см. schedule_calendar.py). Этот список нужен, чтобы точечно посмотреть или
+поправить отдельный день.
 """
 
+from functools import partial
+
+from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.urls import path
 from unfold.admin import ModelAdmin
 
 from ..models import Absence, Master, WorkDay
 from ..services.schedule_editor import remove_work_days
+from .schedule_calendar import schedule_view
+from .widgets import time_field
+
+WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+
+
+class WorkDayForm(forms.ModelForm):
+    """Время выбирается из списка с шагом сетки записи, а не часами-пикером."""
+
+    start_time = time_field("Начало работы")
+    end_time = time_field("Конец работы")
+    break_start = time_field("Перерыв с", required=False)
+    break_end = time_field("Перерыв до", required=False)
+
+    class Meta:
+        model = WorkDay
+        fields = (
+            "master",
+            "date",
+            "start_time",
+            "end_time",
+            "break_start",
+            "break_end",
+        )
 
 
 @admin.register(WorkDay)
 class WorkDayAdmin(ModelAdmin):
+    form = WorkDayForm
     actions = ("remove_selected_work_days",)
 
     list_display = (
         "master",
-        "date",
-        "start_time",
-        "end_time",
-        "break_start",
-        "break_end",
+        "day",
+        "hours",
+        "break_hours",
     )
     list_filter = ("master", "date")
     search_fields = ("master__name",)
+
+    def get_urls(self):
+        # Страница-календарь расписания. Свои адреса идут раньше
+        # стандартных, иначе «calendar/» примется за id рабочего дня.
+        # Адрес намеренно не начинается с адреса списка мастеров, чтобы
+        # в меню Unfold не подсвечивались сразу два пункта.
+        custom = [
+            path(
+                "calendar/",
+                self.admin_site.admin_view(partial(schedule_view, self)),
+                name="catalog_workday_schedule",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    @admin.display(description="Дата", ordering="date")
+    def day(self, obj):
+        return f"{obj.date:%d.%m.%Y}, {WEEKDAYS[obj.date.weekday()]}"
+
+    @admin.display(description="Работает")
+    def hours(self, obj):
+        return f"{obj.start_time:%H:%M}–{obj.end_time:%H:%M}"
+
+    @admin.display(description="Перерыв")
+    def break_hours(self, obj):
+        if obj.break_start is None or obj.break_end is None:
+            return "—"
+        return f"{obj.break_start:%H:%M}–{obj.break_end:%H:%M}"
 
     def save_model(self, request, obj, form, change):
         assert isinstance(obj, WorkDay)
         with transaction.atomic():
             master_ids = {obj.master_id}
             if obj.pk is not None:
-                original = WorkDay.objects.filter(pk=obj.pk).values_list(
-                    "master_id", flat=True,
-                ).first()
+                original = (
+                    WorkDay.objects.filter(pk=obj.pk)
+                    .values_list(
+                        "master_id",
+                        flat=True,
+                    )
+                    .first()
+                )
                 if original is not None:
                     master_ids.add(original)
             # При возможной смене мастера блокируем исходного и целевого

@@ -159,9 +159,7 @@ class TimeBlock(models.Model):
             return
 
         if self.start_time >= self.end_time:
-            raise ValidationError(
-                "Время окончания должно быть позже времени начала."
-            )
+            raise ValidationError("Время окончания должно быть позже времени начала.")
 
         if self.master_id is None or self.date is None:
             return
@@ -315,8 +313,7 @@ class Booking(models.Model):
 
     def __str__(self):
         return (
-            f"{self.date} {self.start_time:%H:%M} — "
-            f"{self.client_name} — {self.master}"
+            f"{self.date} {self.start_time:%H:%M} — {self.client_name} — {self.master}"
         )
 
 
@@ -443,9 +440,7 @@ class WorkDay(models.Model):
             return
 
         if self.start_time >= self.end_time:
-            raise ValidationError(
-                "Время окончания должно быть позже времени начала."
-            )
+            raise ValidationError("Время окончания должно быть позже времени начала.")
 
         if (self.break_start is None) != (self.break_end is None):
             raise ValidationError(
@@ -455,17 +450,10 @@ class WorkDay(models.Model):
 
         if self.break_start is not None and self.break_end is not None:
             if self.break_start >= self.break_end:
-                raise ValidationError(
-                    "Конец перерыва должен быть позже его начала."
-                )
+                raise ValidationError("Конец перерыва должен быть позже его начала.")
 
-            if (
-                self.break_start <= self.start_time
-                or self.break_end >= self.end_time
-            ):
-                raise ValidationError(
-                    "Перерыв должен быть внутри рабочего времени."
-                )
+            if self.break_start <= self.start_time or self.break_end >= self.end_time:
+                raise ValidationError("Перерыв должен быть внутри рабочего времени.")
 
         # Если WorkDay переносится на другую дату/мастера, проверяем, не
         # потеряет ли исходная дата поддержку для онлайн-записей, которые
@@ -522,7 +510,8 @@ class WorkDay(models.Model):
                 status__in=Booking.ACTIVE_STATUSES,
             )
             conflicts = [
-                item for item in bookings
+                item
+                for item in bookings
                 if fits_intervals(item, old_intervals, self.date)
                 and not fits_intervals(item, proposed_intervals, self.date)
             ]
@@ -597,9 +586,7 @@ class Absence(models.Model):
             return
 
         if self.end_date < self.start_date:
-            raise ValidationError(
-                "Дата окончания не может быть раньше даты начала."
-            )
+            raise ValidationError("Дата окончания не может быть раньше даты начала.")
 
         # Мастер ещё не сохранён (его создают в админке вместе с
         # отсутствием): других отсутствий у него в базе пока нет, а фильтр
@@ -615,7 +602,10 @@ class Absence(models.Model):
         if booking_conflicts.exists():
             examples = list(
                 booking_conflicts.values_list(
-                    "date", "start_time", "client_name", "id",
+                    "date",
+                    "start_time",
+                    "client_name",
+                    "id",
                 )[:5]
             )
             labels = ", ".join(
@@ -628,11 +618,15 @@ class Absence(models.Model):
                 f"записи: {labels}{suffix}. Сначала перенесите или отмените их."
             )
 
-        overlapping = Absence.objects.filter(
-            master=self.master,
-            start_date__lte=self.end_date,
-            end_date__gte=self.start_date,
-        ).exclude(pk=self.pk).first()
+        overlapping = (
+            Absence.objects.filter(
+                master=self.master,
+                start_date__lte=self.end_date,
+                end_date__gte=self.start_date,
+            )
+            .exclude(pk=self.pk)
+            .first()
+        )
 
         if overlapping is not None:
             raise ValidationError(

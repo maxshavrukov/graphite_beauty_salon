@@ -169,8 +169,10 @@ class PhoneInAdminFormsTests(TestCase):
 
     def test_change_form_normalizes_phone(self):
         booking = make_booking(
-            master=self.master, service=self.service,
-            target_date=MONDAY, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
         )
 
         form = BookingChangeForm(
@@ -188,8 +190,10 @@ class PhoneInAdminFormsTests(TestCase):
 
     def test_change_form_rejects_bad_phone(self):
         booking = make_booking(
-            master=self.master, service=self.service,
-            target_date=MONDAY, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=MONDAY,
+            start_time=time(9, 0),
         )
 
         form = BookingChangeForm(

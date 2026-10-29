@@ -13,8 +13,15 @@ from datetime import date, datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
 
-from ..models import Absence, Booking, Master, MasterService, Service, TimeBlock, WorkDay
-
+from ..models import (
+    Absence,
+    Booking,
+    Master,
+    MasterService,
+    Service,
+    TimeBlock,
+    WorkDay,
+)
 
 DEFAULT_SLOT_STEP_MINUTES = 30
 
@@ -71,8 +78,7 @@ def load_availability_snapshot(
     if service is not None:
         master_services = master_services.filter(service_id=service.pk)
     snapshot.master_services = {
-        (item.master_id, item.service_id): item
-        for item in master_services
+        (item.master_id, item.service_id): item for item in master_services
     }
 
     snapshot.work_days = {
@@ -105,7 +111,9 @@ def load_availability_snapshot(
     ):
         if block.master_id is None:
             continue
-        snapshot.time_blocks.setdefault((int(block.master_id), block.date), []).append(block)
+        snapshot.time_blocks.setdefault((int(block.master_id), block.date), []).append(
+            block
+        )
 
     for booking in Booking.objects.filter(
         master_id__in=master_ids,
@@ -114,7 +122,9 @@ def load_availability_snapshot(
     ):
         if booking.master_id is None:
             continue
-        snapshot.bookings.setdefault((int(booking.master_id), booking.date), []).append(booking)
+        snapshot.bookings.setdefault((int(booking.master_id), booking.date), []).append(
+            booking
+        )
 
     return snapshot
 
@@ -246,9 +256,7 @@ def filter_candidates_by_time_blocks(
 
     for candidate in candidates:
         candidate_start = candidate
-        candidate_end = (
-            datetime.combine(date.min, candidate_start) + duration
-        ).time()
+        candidate_end = (datetime.combine(date.min, candidate_start) + duration).time()
 
         has_overlap = any(
             intervals_overlap(
@@ -286,8 +294,7 @@ def filter_candidates_by_bookings(
     for candidate in candidates:
         candidate_start = candidate
         candidate_end = (
-            datetime.combine(date.min, candidate_start)
-            + service_duration
+            datetime.combine(date.min, candidate_start) + service_duration
         ).time()
 
         has_overlap = False
@@ -409,10 +416,6 @@ def get_available_slots(
             return []
 
         cutoff_time = cutoff_moment.time()
-        candidates = [
-            candidate
-            for candidate in candidates
-            if candidate >= cutoff_time
-        ]
+        candidates = [candidate for candidate in candidates if candidate >= cutoff_time]
 
     return candidates

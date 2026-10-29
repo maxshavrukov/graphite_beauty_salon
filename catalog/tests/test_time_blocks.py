@@ -1,8 +1,7 @@
 from datetime import date, time
 
-from django.test import TestCase
-
 from django.core.exceptions import ValidationError
+from django.test import TestCase
 
 from catalog.models import Booking, TimeBlock
 from catalog.services import filter_candidates_by_time_blocks

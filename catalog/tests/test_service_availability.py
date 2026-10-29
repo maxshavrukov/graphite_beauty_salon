@@ -80,7 +80,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_dates_for_service(
-            self.service, date_from=self.monday, date_to=self.tuesday,
+            self.service,
+            date_from=self.monday,
+            date_to=self.tuesday,
         )
 
         self.assertIn(self.monday, result)
@@ -103,7 +105,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_dates_for_service(
-            self.service, date_from=self.monday, date_to=self.monday,
+            self.service,
+            date_from=self.monday,
+            date_to=self.monday,
         )
 
         self.assertEqual(result, [])
@@ -125,7 +129,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_dates_for_service(
-            self.service, date_from=self.monday, date_to=self.monday,
+            self.service,
+            date_from=self.monday,
+            date_to=self.monday,
         )
 
         self.assertEqual(result, [self.monday])
@@ -133,7 +139,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
 
     def test_returns_empty_when_no_master_offers_service(self):
         result = get_available_dates_for_service(
-            self.service, date_from=self.monday, date_to=self.tuesday,
+            self.service,
+            date_from=self.monday,
+            date_to=self.tuesday,
         )
 
         self.assertEqual(result, [])
@@ -150,7 +158,9 @@ class GetAvailableDatesForServiceTests(ServiceAvailabilityTestsBase):
         make_absence(master, self.monday)
 
         result = get_available_dates_for_service(
-            self.service, date_from=self.monday, date_to=self.monday,
+            self.service,
+            date_from=self.monday,
+            date_to=self.monday,
         )
 
         self.assertEqual(result, [])
@@ -168,7 +178,10 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_dates_for_master(
-            master, self.service, date_from=self.monday, date_to=self.tuesday,
+            master,
+            self.service,
+            date_from=self.monday,
+            date_to=self.tuesday,
         )
 
         self.assertEqual(result, [self.monday])
@@ -191,7 +204,10 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_dates_for_master(
-            master, self.service, date_from=self.monday, date_to=self.monday,
+            master,
+            self.service,
+            date_from=self.monday,
+            date_to=self.monday,
         )
 
         self.assertEqual(result, [])
@@ -215,7 +231,10 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
         # У target_master в этот день вообще нет рабочих часов.
 
         result = get_available_dates_for_master(
-            target_master, self.service, date_from=self.monday, date_to=self.monday,
+            target_master,
+            self.service,
+            date_from=self.monday,
+            date_to=self.monday,
         )
 
         self.assertEqual(result, [])
@@ -233,7 +252,10 @@ class GetAvailableDatesForMasterTests(ServiceAvailabilityTestsBase):
         make_absence(master, self.monday)  # отсутствие только в понедельник
 
         result = get_available_dates_for_master(
-            master, self.service, date_from=self.monday, date_to=self.tuesday,
+            master,
+            self.service,
+            date_from=self.monday,
+            date_to=self.tuesday,
         )
 
         self.assertEqual(result, [self.tuesday])
@@ -261,7 +283,9 @@ class GetAvailableTimesForServiceTests(ServiceAvailabilityTestsBase):
         )
 
         result = get_available_times_for_service(
-            self.service, self.monday, slot_step_minutes=30,
+            self.service,
+            self.monday,
+            slot_step_minutes=30,
         )
 
         self.assertEqual(result, [time(9, 0), time(15, 0)])
@@ -278,7 +302,9 @@ class GetAvailableTimesForServiceTests(ServiceAvailabilityTestsBase):
             )
 
         result = get_available_times_for_service(
-            self.service, self.monday, slot_step_minutes=30,
+            self.service,
+            self.monday,
+            slot_step_minutes=30,
         )
 
         self.assertEqual(result, [time(9, 0)])
@@ -289,8 +315,12 @@ class GetAvailableMastersForSlotTests(ServiceAvailabilityTestsBase):
         free_master = make_master()
         busy_master = make_master()
 
-        make_master_service(free_master, self.service, price=Decimal("450.00"), duration=30)
-        make_master_service(busy_master, self.service, price=Decimal("600.00"), duration=30)
+        make_master_service(
+            free_master, self.service, price=Decimal("450.00"), duration=30
+        )
+        make_master_service(
+            busy_master, self.service, price=Decimal("600.00"), duration=30
+        )
 
         for master in (free_master, busy_master):
             make_work_day(
@@ -312,7 +342,8 @@ class GetAvailableMastersForSlotTests(ServiceAvailabilityTestsBase):
         result = get_available_masters_for_slot(self.service, self.monday, time(9, 0))
 
         self.assertEqual(
-            result, [{"master": free_master, "price": Decimal("450.00")}],
+            result,
+            [{"master": free_master, "price": Decimal("450.00")}],
         )
 
     def test_ignores_master_not_offering_service(self):

@@ -1,0 +1,187 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{# Без этого блока Unfold не рисует название и значок в шапке бокового меню. #}
+{% block branding %}{% include "unfold/helpers/site_branding.html" %}{% endblock %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'catalog/admin/schedule.css' %}">
+
+
+<div class="sched">
+{% if not masters %}
+  <div class="sched-card">
+    Пока нет ни одного мастера. <a href="{% url 'admin:catalog_master_add' %}">Добавить мастера</a>
+  </div>
+{% else %}
+
+  <div class="sched-top">
+    <form method="get">
+      <select class="sched-select" name="master" onchange="this.form.submit()" aria-label="Мастер">
+        {% for item in masters %}
+          <option value="{{ item.pk }}" {% if item.pk == master.pk %}selected{% endif %}>
+            {{ item.name }}{% if not item.is_active %} (скрыт на сайте){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="month" value="{{ month_value }}">
+      <noscript><button class="sched-btn" type="submit">Показать</button></noscript>
+    </form>
+
+    <div class="sched-nav">
+      <a href="{{ prev_url }}" aria-label="Предыдущий месяц">←</a>
+      <div class="sched-month">{{ month_title }}</div>
+      <a href="{{ next_url }}" aria-label="Следующий месяц">→</a>
+      <a href="{{ today_url }}">Сегодня</a>
+    </div>
+  </div>
+
+  <div class="sched-banner {% if status.is_low %}is-low{% endif %}">
+    {% if status.filled_until is None %}
+      У мастера ещё не заполнено ни одного рабочего дня.
+    {% elif status.is_low %}
+      Расписание заполнено до {{ status.filled_until|date:"j E Y" }} — осталось {{ status.days_left }} дн. Пора продлить.
+    {% else %}
+      Расписание заполнено до {{ status.filled_until|date:"j E Y" }} (осталось {{ status.days_left }} дн.).
+    {% endif %}
+  </div>
+
+  <form method="post" id="sched-form" autocomplete="off">
+    {% csrf_token %}
+    <input type="hidden" name="master" value="{{ master.pk }}">
+    <input type="hidden" name="month" value="{{ month_value }}">
+    <input type="hidden" name="dates" id="sched-dates" value="">
+
+    <div class="sched-layout">
+      <div class="sched-card">
+        <div class="sched-grid" id="sched-grid" data-preselected="{{ selected_csv }}">
+          {% for name in weekday_names %}
+            <button type="button" class="sched-wd" data-weekday="{{ forloop.counter0 }}"
+                    title="Выбрать все: {{ name }}">{{ name }}</button>
+          {% endfor %}
+
+          {% for week in weeks %}
+            {% for cell in week %}
+              {% if cell %}
+                <button type="button"
+                        class="sched-cell {% if cell.is_working %}is-working{% elif cell.is_absent %}is-absent{% endif %}{% if cell.is_today %} is-today{% endif %}"
+                        data-date="{{ cell.iso }}" data-weekday="{{ cell.weekday }}"
+                        {% if cell.is_past %}disabled{% endif %}>
+                  <span class="sched-num">{{ cell.number }}</span>
+                  {% if cell.is_absent %}
+                    <span class="sched-info">{{ cell.absence }}</span>
+                  {% elif cell.is_working %}
+                    <span class="sched-info">{{ cell.hours }}{% if cell.has_break %}<br>с перерывом{% endif %}</span>
+                  {% endif %}
+                  {% if cell.bookings %}
+                    <span class="sched-badge">записей: {{ cell.bookings }}</span>
+                  {% endif %}
+                </button>
+              {% else %}
+                <div class="sched-blank"></div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+
+        <div class="sched-legend">
+          <span><i class="sched-dot sched-dot-work"></i>рабочий день</span>
+          <span><i class="sched-dot sched-dot-absent"></i>отпуск, больничный, отгул</span>
+          <span><i class="sched-dot sched-dot-empty"></i>не отмечен</span>
+        </div>
+      </div>
+
+      <div class="sched-card sched-panel">
+        <h3>Выбранные дни</h3>
+        <div class="sched-count">Выбрано: <b id="sched-count">0</b></div>
+
+        <div class="sched-quick">
+          <button type="button" class="sched-btn sched-btn-small" id="sched-weekdays">Пн–Пт</button>
+          <button type="button" class="sched-btn sched-btn-small" id="sched-all">Все дни</button>
+          <button type="button" class="sched-btn sched-btn-small" id="sched-none">Снять выбор</button>
+        </div>
+
+        <div class="sched-field">
+          <label>Время работы</label>
+          <div class="sched-row">
+            <select class="sched-select" name="start_time" aria-label="Начало работы">
+              {% for value, label in time_options %}
+                <option value="{{ value }}" {% if value == form.start_time %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <select class="sched-select" name="end_time" aria-label="Конец работы">
+              {% for value, label in time_options %}
+                <option value="{{ value }}" {% if value == form.end_time %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="sched-field">
+          <label>Перерыв (необязательно)</label>
+          <div class="sched-row">
+            <select class="sched-select" name="break_start" aria-label="Начало перерыва">
+              {% for value, label in break_options %}
+                <option value="{{ value }}" {% if value == form.break_start %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <select class="sched-select" name="break_end" aria-label="Конец перерыва">
+              {% for value, label in break_options %}
+                <option value="{{ value }}" {% if value == form.break_end %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="sched-actions">
+          <button type="submit" name="action" value="apply" class="sched-btn sched-btn-primary">Применить</button>
+          <button type="submit" name="action" value="clear" class="sched-btn sched-btn-danger"
+                  id="sched-clear">Снять рабочие дни</button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="sched-card sched-card-spaced">
+    <details>
+      <summary>Отпуск, больничный или отгул</summary>
+      <form method="post" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="master" value="{{ master.pk }}">
+        <input type="hidden" name="month" value="{{ month_value }}">
+        <input type="hidden" name="action" value="absence">
+        <div class="sched-row sched-row-4">
+          <div class="sched-field sched-field-flat">
+            <label>Тип</label>
+            <select class="sched-select" name="kind">
+              {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="sched-field sched-field-flat">
+            <label>Первый день</label>
+            <input class="sched-input" type="date" name="start_date" required>
+          </div>
+          <div class="sched-field sched-field-flat">
+            <label>Последний день</label>
+            <input class="sched-input" type="date" name="end_date" required>
+          </div>
+          <div class="sched-field sched-field-flat">
+            <label>Комментарий</label>
+            <input class="sched-input" type="text" name="comment" maxlength="200">
+          </div>
+        </div>
+        <button type="submit" class="sched-btn">Оформить отсутствие</button>
+        <span class="sched-note">
+          Рабочие дни при этом не удаляются.
+          <a href="{% url 'admin:catalog_absence_changelist' %}">Все отсутствия</a>
+        </span>
+      </form>
+    </details>
+  </div>
+
+  <script src="{% static 'catalog/admin/schedule.js' %}" defer></script>
+{% endif %}
+</div>
+{% endblock %}

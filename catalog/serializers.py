@@ -54,6 +54,7 @@ class AvailableMasterSerializer(serializers.Serializer):
     {"master": <Master>, "price": Decimal(...)}, которые отдаёт
     get_available_masters_for_slot — а не саму модель MasterService.
     """
+
     master = MasterSerializer()
     price = serializers.DecimalField(max_digits=10, decimal_places=2)
 

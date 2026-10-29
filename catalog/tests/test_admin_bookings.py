@@ -151,7 +151,10 @@ class BookingAdminTests(TestCase):
         self.service = make_service()
         self.master = make_master()
         make_master_service(
-            self.master, self.service, price=Decimal("450.00"), duration=30,
+            self.master,
+            self.service,
+            price=Decimal("450.00"),
+            duration=30,
         )
         self.add_url = reverse("admin:catalog_booking_add")
         self.list_url = reverse("admin:catalog_booking_changelist")
@@ -253,12 +256,16 @@ class BookingAdminTests(TestCase):
 
     def test_confirm_action_confirms_only_new_bookings(self) -> None:
         new = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(9, 0),
         )
         cancelled = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(10, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(10, 0),
             status=Booking.Status.CANCELLED,
         )
 
@@ -272,13 +279,17 @@ class BookingAdminTests(TestCase):
 
     def test_cancel_action_skips_completed_bookings(self) -> None:
         confirmed = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(9, 0),
             status=Booking.Status.CONFIRMED,
         )
         completed = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(10, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(10, 0),
             status=Booking.Status.COMPLETED,
         )
 
@@ -291,8 +302,10 @@ class BookingAdminTests(TestCase):
 
     def test_no_show_action_marks_confirmed_booking(self) -> None:
         booking = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(9, 0),
             status=Booking.Status.CONFIRMED,
         )
 
@@ -303,8 +316,10 @@ class BookingAdminTests(TestCase):
 
     def test_complete_action_marks_confirmed_booking(self) -> None:
         booking = make_booking(
-            master=self.master, service=self.service,
-            target_date=TARGET_DATE, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=TARGET_DATE,
+            start_time=time(9, 0),
             status=Booking.Status.CONFIRMED,
         )
 
@@ -318,13 +333,17 @@ class BookingAdminTests(TestCase):
     def test_day_filter_today_shows_only_todays_bookings(self) -> None:
         today = timezone.localdate()
         make_booking(
-            master=self.master, service=self.service,
-            target_date=today, start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=today,
+            start_time=time(9, 0),
             client_name="Сегодняшний",
         )
         make_booking(
-            master=self.master, service=self.service,
-            target_date=today + timedelta(days=1), start_time=time(9, 0),
+            master=self.master,
+            service=self.service,
+            target_date=today + timedelta(days=1),
+            start_time=time(9, 0),
             client_name="Завтрашний",
         )
 

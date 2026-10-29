@@ -40,9 +40,8 @@ def get_booking_end_time(
     дату и start_time как значения одного календарного дня.
     """
 
-    end_datetime = (
-        datetime.combine(date.min, start_time)
-        + timedelta(minutes=duration_minutes)
+    end_datetime = datetime.combine(date.min, start_time) + timedelta(
+        minutes=duration_minutes
     )
 
     if end_datetime.date() != date.min:
@@ -163,11 +162,7 @@ def validate_booking_slot(
     # одного календарного дня.
     booking_end_time = get_booking_end_time(
         start_time,
-        (
-            duration_minutes
-            if duration_minutes is not None
-            else master_service.duration
-        ),
+        (duration_minutes if duration_minutes is not None else master_service.duration),
     )
 
     if source == Booking.Source.ONLINE:

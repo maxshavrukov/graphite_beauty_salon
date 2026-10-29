@@ -48,7 +48,9 @@ class CreateBookingTests(TestCase):
         )
 
     def test_creates_booking_with_snapshotted_price_and_duration(self):
-        make_master_service(self.master, self.service, price=Decimal("450.00"), duration=30)
+        make_master_service(
+            self.master, self.service, price=Decimal("450.00"), duration=30
+        )
 
         booking = create_booking(
             master=self.master,
@@ -67,7 +69,10 @@ class CreateBookingTests(TestCase):
 
     def test_price_snapshot_is_independent_from_later_price_changes(self):
         master_service = make_master_service(
-            self.master, self.service, price=Decimal("450.00"), duration=30,
+            self.master,
+            self.service,
+            price=Decimal("450.00"),
+            duration=30,
         )
 
         booking = create_booking(

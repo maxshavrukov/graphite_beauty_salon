@@ -8,7 +8,6 @@ from unfold.admin import ModelAdmin, TabularInline
 from ..models import Absence, Master, MasterService, TimeBlock
 from .widgets import time_field
 
-
 # ---------------------------------------------------------------------------
 # Форма для вкладки «Занятое время»
 # ---------------------------------------------------------------------------

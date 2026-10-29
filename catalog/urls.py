@@ -5,7 +5,9 @@ from . import views
 urlpatterns = [
     path("categories/", views.category_list, name="category-list"),
     path("masters/", views.master_list, name="master-list"),
-    path("masters/<slug:slug>/services/", views.master_services, name="master-services"),
+    path(
+        "masters/<slug:slug>/services/", views.master_services, name="master-services"
+    ),
     path(
         "masters/<slug:slug>/services/<slug:service_slug>/available-dates/",
         views.master_service_available_dates,
