@@ -30,10 +30,9 @@
       <div class="container">
         <div class="section-head">
           <h2>Услуги</h2>
-          <p>
-            Выберите направление. Цены и полный список появятся на отдельной
-            странице.
-          </p>
+          <div class="section-more">
+            <a class="btn btn-ghost" href="{% url 'webpages:services' %}">Все услуги и цены</a>
+          </div>
         </div>
 
         <div class="card-grid">
@@ -67,19 +66,19 @@
         <div class="master-grid">
           {% for master in masters %}
             <article class="master">
-              {% if master.photo %}
-                <img class="master-photo"
-                     src="{{ master.photo.url }}"
-                     alt="{{ master.name }}"
-                     loading="lazy" />
-              {% else %}
-                <div class="master-photo master-photo-empty"
-                     aria-hidden="true">{{ master.name|first }}</div>
-              {% endif %}
-              <h3>{{ master.name }}</h3>
-              {% if master.bio %}
-                <p>{{ master.bio|truncatewords:22 }}</p>
-              {% endif %}
+              <a class="master-link" href="{% url 'webpages:master' master.slug %}">
+                {% if master.photo %}
+                  <img class="master-photo"
+                       src="{{ master.photo.url }}"
+                       alt="{{ master.name }}"
+                       loading="lazy">
+                {% else %}
+                  <div class="master-photo master-photo-empty"
+                       aria-hidden="true">{{ master.name|first }}</div>
+                {% endif %}
+                <h3>{{ master.name }}</h3>
+                {% if master.bio %}<p>{{ master.bio|truncatewords:22 }}</p>{% endif %}
+              </a>
             </article>
           {% endfor %}
         </div>

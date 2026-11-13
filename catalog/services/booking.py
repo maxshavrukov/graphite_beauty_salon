@@ -118,11 +118,18 @@ def validate_booking_slot(
             "Мастер больше не принимает клиентов.",
         )
 
+    # 1. Услуга неактивна и нет разрешения на старую пару: сразу ошибка.
     if not service.is_active and not allow_inactive_existing_pair:
         raise SlotUnavailableError(
             "Услуга больше недоступна для новых записей.",
         )
 
+    # 2. Онлайн-запись, а категория услуги выключена. Выключенная категория
+    # скрывает услугу с сайта, но по телефону и через админку запись возможна.
+    if source == Booking.Source.ONLINE and not service.category.is_active:
+        raise SlotUnavailableError(
+            "Услуга больше недоступна для онлайн-записи.",
+        )
     try:
         master_service = master.master_services.get(
             service=service,

@@ -1,16 +1,25 @@
 {% extends "webpages/base.html" %}
+{% load static %}
 
 {% block title %}Онлайн-запись — Graphite{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{% static 'webpages/booking/booking.css' %}">
+{% endblock %}
 
 {% block content %}
   <section class="section">
     <div class="container narrow">
-      <h1 class="page-title">Онлайн-запись</h1>
-
-      {# Сюда позже подключится React-форма записи. #}
+      {# Сюда React отрисует форму записи. #}
       <div id="booking-root">
-        <div class="notice">Форма онлайн-записи скоро появится на этой странице.</div>
+        <noscript>
+          <div class="notice">Для онлайн-записи нужен включённый JavaScript.</div>
+        </noscript>
       </div>
     </div>
   </section>
+{% endblock %}
+
+{% block extra_body %}
+  <script type="module" src="{% static 'webpages/booking/booking.js' %}"></script>
 {% endblock %}

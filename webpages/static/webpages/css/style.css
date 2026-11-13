@@ -34,6 +34,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+
 html {
   scroll-behavior: smooth;
   scroll-padding-top: calc(var(--header-h) + 16px);
@@ -403,6 +404,61 @@ p {
 .cta .btn-primary { background: var(--bg); color: var(--ink); }
 .cta .btn-primary:hover { background: #efd6ce; }
 
+/* ---------- Услуги и цены ---------- */
+.page-lead { margin: -12px 0 8px; }
+.price-group { margin-top: 48px; }
+.price-group h2 { font-size: clamp(28px, 3.4vw, 38px); margin-bottom: 8px; }
+
+.price-list { list-style: none; margin: 0; padding: 0; }
+.price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.price-info { min-width: 0; }
+.price-name { font-weight: 500; }
+.price-desc { margin-top: 2px; color: var(--muted); font-size: 15px; }
+
+.price-meta { display: flex; align-items: baseline; gap: 20px; flex-shrink: 0; text-align: right; }
+.price-duration { color: var(--muted); font-size: 15px; white-space: nowrap; min-width: 90px; text-align: right; }
+.price-value { font-family: var(--font-body); font-size: 26px; font-weight: 600; white-space: nowrap; font-variant-numeric: lining-nums; min-width: 120px; text-align: right;}
+.price-from { margin-right: 6px; font-family: var(--font-body); font-size: 14px; font-weight: 400; color: var(--muted); }
+.price-currency { margin-left: 3px; font-family: var(--font-body); font-size: 16px; font-weight: 500; }
+
+.price-cta { margin-top: 48px; }
+.section-more { margin-top: 32px; }
+
+/* ---------- Мастер: карточка на главной и страница ---------- */
+.master-link { display: block; text-decoration: none; color: inherit; }
+.master-link:hover h3 { color: #8f5a4f; }
+.master-link .master-photo { transition: transform .3s; }
+.master-link:hover .master-photo { transform: translateY(-3px); }
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 32px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 15px;
+}
+.back-link:hover { color: var(--ink); }
+
+.master-page {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) 1fr;
+  gap: 56px;
+  align-items: start;
+}
+.master-page-photo { position: sticky; top: calc(var(--header-h) + 24px); }
+.master-page h1 { font-size: clamp(36px, 5vw, 56px); }
+.master-bio { margin-top: 20px; max-width: 560px; color: var(--muted); }
+.master-bio p + p { margin-top: 12px; }
+.master-services .price-group:first-child { margin-top: 36px; }
+
+
 /* ---------- Мобильная версия ---------- */
 @media (max-width: 860px) {
   .hero {
@@ -419,4 +475,14 @@ p {
   .section {
     padding: 56px 0;
   }
+  .master-page { grid-template-columns: 1fr; gap: 32px; }
+  .master-page-photo { position: static; max-width: 340px; }
 }
+
+@media (max-width: 560px) {
+  .price-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .price-meta { width: 100%; justify-content: space-between; }
+  .price-duration { min-width: 0; text-align: left; }
+  .price-value { min-width: 0; }
+}
+

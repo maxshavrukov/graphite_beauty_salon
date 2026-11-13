@@ -6,10 +6,12 @@ from django.utils import timezone
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
+    parser_classes,
     permission_classes,
     throttle_classes,
 )
 from rest_framework.exceptions import ParseError
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -86,6 +88,7 @@ def master_services(request, slug):
         master.master_services.filter(
             is_active=True,
             service__is_active=True,
+            service__category__is_active=True,
         )
         .select_related("service")
         .order_by(
@@ -102,25 +105,35 @@ def master_services(request, slug):
 def _get_active_master_and_service(master_slug, service_slug):
     """
     Достаёт мастера и услугу, проверяя заодно, что мастер реально
-    оказывает эту услугу (есть активная MasterService). Если
-    комбинация невалидна — 404, а не молчаливый пустой список:
-    это ошибка в самом запросе, а не "просто нет свободного времени".
+    оказывает эту услугу (есть активная MasterService) и что категория активна.
     """
     master = get_object_or_404(Master, slug=master_slug, is_active=True)
-    service = get_object_or_404(Service, slug=service_slug, is_active=True)
+
+    service = get_object_or_404(
+        Service,
+        slug=service_slug,
+        is_active=True,
+        category__is_active=True,
+    )
 
     get_object_or_404(
         MasterService,
         master=master,
         service=service,
         is_active=True,
+        service__category__is_active=True,
     )
 
     return master, service
 
 
 def _get_active_service(service_slug):
-    return get_object_or_404(Service, slug=service_slug, is_active=True)
+    return get_object_or_404(
+        Service,
+        slug=service_slug,
+        is_active=True,
+        category__is_active=True,
+    )
 
 
 def _parse_date_param(request):
@@ -289,6 +302,7 @@ def service_available_masters(request, service_slug):
 
 @api_view(["POST"])
 @authentication_classes([])
+@parser_classes([JSONParser])
 @permission_classes([AllowAny])
 @throttle_classes([BookingCreateThrottle])
 def booking_create(request):

@@ -74,7 +74,7 @@ class BookingCreateSerializer(serializers.Serializer):
     )
     service = serializers.SlugRelatedField(
         slug_field="slug",
-        queryset=Service.objects.filter(is_active=True),
+        queryset=Service.objects.filter(is_active=True, category__is_active=True),
     )
     date = serializers.DateField()
     start_time = serializers.TimeField(input_formats=["%H:%M"])

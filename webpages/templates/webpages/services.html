@@ -1,0 +1,55 @@
+{% extends "webpages/base.html" %}
+
+{% block title %}Услуги и цены — Graphite{% endblock %}
+
+{% block content %}
+    <section class="section">
+        <div class="container narrow">
+            <h1 class="page-title">Услуги и цены</h1>
+            <p class="lead page-lead">
+                Если указано «от», итоговая цена зависит от выбранного мастера.
+                Точную стоимость вы увидите при записи.
+            </p>
+
+            {% regroup services by category as groups %}
+            {% for group in groups %}
+                <section class="price-group">
+                    <h2>{{ group.grouper.name }}</h2>
+
+                    <ul class="price-list">
+                        {% for service in group.list %}
+                            <li class="price-row">
+                                <div class="price-info">
+                                    <div class="price-name">{{ service.name }}</div>
+                                    {% if service.description %}
+                                        <div class="price-desc">{{ service.description }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="price-meta">
+                                    <span class="price-duration">
+                                        {% if service.duration_min == service.duration_max %}
+                                            {{ service.duration_min }} мин
+                                        {% else %}
+                                            {{ service.duration_min }}–{{ service.duration_max }} мин
+                                        {% endif %}
+                                    </span>
+                                    <span class="price-value">
+                                        {% if service.price_min != service.price_max %}<span class="price-from">от</span>{% endif %}
+                                        {{ service.price_min|floatformat:"-2" }}<span class="price-currency">₴</span>
+                                    </span>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            {% empty %}
+                <div class="notice">Список услуг скоро появится.</div>
+            {% endfor %}
+
+            <div class="price-cta">
+                <a class="btn btn-primary" href="{% url 'webpages:booking' %}">Записаться онлайн</a>
+            </div>
+        </div>
+    </section>
+{% endblock %}

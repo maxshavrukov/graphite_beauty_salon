@@ -97,7 +97,7 @@ export default function App() {
   const ready = status === 'ready'
 
   return (
-    <main className="page">
+    <div className="page">
       <header className="page__header">
         <h1>Graphite Beauty Salon</h1>
         <p>Онлайн-запись</p>
@@ -175,6 +175,6 @@ export default function App() {
           onConflict={handleConflict}
         />
       )}
-    </main>
+    </div>
   )
 }

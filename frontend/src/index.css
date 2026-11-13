@@ -1,6 +1,6 @@
-/* Цвета и размеры собраны в переменные: сменить стиль всего сайта
-   можно здесь, не трогая компоненты. */
-:root {
+/* Стили формы записи. Всё ограничено областью .page, чтобы форма не ломала
+   стили сайта, на странице которого она показывается. */
+.page {
   --bg: #f4f4f5;
   --surface: #ffffff;
   --text: #1f1f23;
@@ -11,35 +11,21 @@
   --error: #b3261e;
   --radius: 12px;
 
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: var(--text);
-  background: var(--bg);
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-}
-
-.page {
   max-width: 720px;
   margin: 0 auto;
   padding: 32px 16px 64px;
+  color: var(--text);
+}
+
+.page h1,
+.page h2,
+.page h3 {
+  margin: 0;
+}
+
+.page button {
+  font: inherit;
+  color: inherit;
 }
 
 .page__header {

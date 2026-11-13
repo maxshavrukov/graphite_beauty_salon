@@ -37,8 +37,10 @@ class BookingCreateApiTests(TestCase):
     # APIClient.post/get для Pylance возвращают не DRF Response
     # (HttpResponse или вовсе WSGIRequest), хотя на деле это он —
     # уточняем тип в одном месте, а не в каждом тесте.
-    def post(self, data) -> Response:
-        return cast(Response, self.api.post(URL, data, format="json"))
+    def post(self, data, format: str | None = "json") -> Response:
+        if format is None:
+            return cast(Response, self.api.post(URL, data))
+        return cast(Response, self.api.post(URL, data, format=format))
 
     def get(self) -> Response:
         return cast(Response, self.api.get(URL))
@@ -167,3 +169,9 @@ class BookingCreateApiTests(TestCase):
         response = self.post({})
 
         self.assertEqual(response.status_code, 429)
+
+    def test_rejects_non_json_request(self):
+        response = self.post(self.payload(), format=None)
+
+        self.assertEqual(response.status_code, 415)
+        self.assertFalse(Booking.objects.exists())

@@ -1,0 +1,66 @@
+{% extends "webpages/base.html" %}
+
+{% block title %}{{ master.name }} — Graphite{% endblock %}
+
+{% block content %}
+    <section class="section">
+        <div class="container">
+            <a class="back-link" href="{% url 'webpages:home' %}#masters">← Все мастера</a>
+
+            <div class="master-page">
+                <div class="master-page-photo">
+                    {% if master.photo %}
+                        <img class="master-photo"
+                             src="{{ master.photo.url }}"
+                             alt="{{ master.name }}">
+                    {% else %}
+                        <div class="master-photo master-photo-empty"
+                             aria-hidden="true">{{ master.name|first }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="master-page-info">
+                    <h1>{{ master.name }}</h1>
+
+                    {% if master.bio %}
+                        <div class="master-bio">{{ master.bio|linebreaks }}</div>
+                    {% endif %}
+
+                    <div class="master-services">
+                        {% regroup offers by service.category as groups %}
+                        {% for group in groups %}
+                            <section class="price-group">
+                                <h2>{{ group.grouper.name }}</h2>
+
+                                <ul class="price-list">
+                                    {% for offer in group.list %}
+                                        <li class="price-row">
+                                            <div class="price-info">
+                                                <div class="price-name">{{ offer.service.name }}</div>
+                                                {% if offer.service.description %}
+                                                    <div class="price-desc">{{ offer.service.description }}</div>
+                                                {% endif %}
+                                            </div>
+
+                                            <div class="price-meta">
+                                                <span class="price-duration">{{ offer.duration }} мин</span>
+                                                <span class="price-value">
+                                                    {{ offer.price|floatformat:"-2" }}<span class="price-currency">₴</span>
+                                                </span>
+                                            </div>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </section>
+                        {% endfor %}
+                    </div>
+
+                    <div class="price-cta">
+                        <a class="btn btn-primary"
+                           href="{% url 'webpages:booking' %}">Записаться онлайн</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}
